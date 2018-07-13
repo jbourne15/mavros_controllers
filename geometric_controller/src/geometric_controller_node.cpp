@@ -181,7 +181,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
   if(ctrl_mode_ == MODE_ROTORTHRUST){
     //TODO: Compute Thrust commands
   } else if(ctrl_mode_ == MODE_BODYRATE){
-      computeBodyRateCmd(false);
+      computeBodyRateCmd(true);
       pubReferencePose();
       pubRateCommands();
   } else if(ctrl_mode_ == MODE_BODYTORQUE){
@@ -230,17 +230,29 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
   errorVel_ = mavVel_ - targetVel_;
   a_ref = targetAcc_;
 
-  /// Compute BodyRate commands using differential flatness
-  /// Controller based on Faessler 2017
-  q_ref = acc2quaternion(a_ref - g_, mavYaw_);
-  R_ref = quat2RotMatrix(q_ref);
-  a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_; //feedforward term for trajectory error
-  if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;
-  a_rd = R_ref * D_.asDiagonal() * R_ref.transpose() * targetVel_; //Rotor drag
-  a_des = a_fb + a_ref - a_rd - g_;
-  q_des = acc2quaternion(a_des, mavYaw_);
+//  if(errorPos_.norm() > 0.5) errorPos_ = (1/errorPos_.norm())*errorPos_; //Clip position error
 
-  cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
+  if(ctrl_mode){
+    /// Compute BodyRate commands using differential flatness
+    /// Controller based on Lee[2010], Faessler[2017]
+    if(reference_request_dt_ > 0) a_ref = (targetVel_ - targetVel_prev_ ) / reference_request_dt_;
+    else a_ref = Eigen::Vector3d::Zero();
+    q_ref = acc2quaternion(a_ref - g_, mavYaw_);
+    R_ref = quat2RotMatrix(q_ref);
+    a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_; //feedforward term for trajectory error
+    if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;
+    a_rd = R_ref * D_.asDiagonal() * R_ref.transpose() * targetVel_; //Rotor drag
+    a_des = a_fb + a_ref - a_rd - g_;
+    q_des = acc2quaternion(a_des, mavYaw_);
+    cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
+  } else {
+    /// Compute BodyRate commands by feeding in jerk of trajectory
+    /// Controller based on Lopez[2016]
+    //TODO: Feedforward Jerk Controller Implementation
+    if(reference_request_dt_ > 0) a_ref = (targetVel_ - targetVel_prev_ ) / reference_request_dt_;
+    else a_ref = Eigen::Vector3d::Zero();
+    cmdBodyRate_ = jerkcontroller(targetJerk_, errorVel_, errorPos_, mavAtt_); //Calculate BodyRate
+  }
 }
 
 Eigen::Vector4d geometricCtrl::quatMultiplication(Eigen::Vector4d &q, Eigen::Vector4d &p) {
@@ -330,6 +342,13 @@ Eigen::Vector4d geometricCtrl::attcontroller(Eigen::Vector4d &ref_att, Eigen::Ve
   ratecmd(3) = std::max(0.0, std::min(1.0, norm_thrust_const_ * ref_acc.dot(zb))); //Calculate thrust
   return ratecmd;
 }
+
+Eigen::Vector4d geometricCtrl::jerkcontroller(Eigen::Vector3d &ref_jerk, Eigen::Vector3d &ref_acc, Eigen::Vector3d &ref_vel, Eigen::Vector4d &curr_att){
+  Eigen::Vector4d ratecmd;
+  //TODO: Implementation of jerk feedforward control
+  return ratecmd;
+}
+
 
 bool geometricCtrl::ctrltriggerCallback(std_srvs::SetBool::Request &req,
                                           std_srvs::SetBool::Response &res){

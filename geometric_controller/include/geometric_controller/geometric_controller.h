@@ -107,6 +107,7 @@ class geometricCtrl
     void computeBodyRateCmd(bool ctrl_mode);
     Eigen::Vector4d quatMultiplication(Eigen::Vector4d &q, Eigen::Vector4d &p);
     Eigen::Vector4d attcontroller(Eigen::Vector4d &ref_att, Eigen::Vector3d &ref_acc, Eigen::Vector4d &curr_att);
+    Eigen::Vector4d jerkcontroller(Eigen::Vector3d &ref_jerk, Eigen::Vector3d &ref_acc, Eigen::Vector3d &ref_vel, Eigen::Vector4d &curr_att);
     virtual ~ geometricCtrl();
 };
 
