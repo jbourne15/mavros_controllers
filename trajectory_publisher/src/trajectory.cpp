@@ -11,7 +11,7 @@ trajectory::trajectory(int type) :
   type_(type) {
 
   traj_axis_ << 0.0, 0.0, 1.0;
-  target_initpos << 0.0, 0.0, 0.0;
+  initpos_ << 0.0, 0.0, 0.0;
 
   c_x_ << 0.0, 0.0, 0.0;
   c_y_ << 0.0, 0.0, 0.0;
@@ -88,15 +88,15 @@ Eigen::Vector3d trajectory::getPosition(double time){
     case TRAJ_CIRCLE :
 
       theta = traj_omega_* time;
-      position = std::cos(theta) * target_initpos
-               + std::sin(theta) * traj_axis_.cross(target_initpos)
-               + (1 - std::cos(theta)) * traj_axis_.dot(target_initpos) * traj_axis_;
+      position = std::cos(theta) * initpos_
+               + std::sin(theta) * traj_axis_.cross(initpos_)
+               + (1 - std::cos(theta)) * traj_axis_.dot(initpos_) * traj_axis_;
       break;
     case TRAJ_LAMNISCATE : //Lemniscate of Genero
 
-      position = std::cos(theta) * target_initpos
-               + std::sin(theta) * std::cos(theta) * traj_axis_.cross(target_initpos)
-               + (1 - std::cos(theta)) * traj_axis_.dot(target_initpos) * traj_axis_;
+      position = std::cos(theta) * initpos_
+               + std::sin(theta) * std::cos(theta) * traj_axis_.cross(initpos_)
+               + (1 - std::cos(theta)) * traj_axis_.dot(initpos_) * traj_axis_;
       break;
   }
   return position;
@@ -158,7 +158,7 @@ void trajectory::setTrajectory(int ID, double omega, Eigen::Vector3d axis, doubl
   traj_axis_ = axis;
   traj_omega_ = omega;
   traj_radius_ = radius;
-  target_initpos = initpos;
+  initpos_ = initpos;
 }
 
 void trajectory::setTrajectory(int ID) {

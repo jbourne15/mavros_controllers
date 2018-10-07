@@ -33,19 +33,20 @@ trajectoryPublisher::trajectoryPublisher(const ros::NodeHandle& nh, const ros::N
 
 
 //  motionPrimitives_.resize(num_primitives_ );
+  motionPrimitives_.emplace_back(TRAJ_ZERO);
   for(int i = 0;  i < num_primitives_; i++) motionPrimitives_.emplace_back(TRAJ_POLYNOMIAL);
 
-  inputs_.resize(num_primitives_);
+  inputs_.resize(num_primitives_ + 1);
   inputs_.at(0) << 0.0, 0.0, 0.0;
-  inputs_.at(1) << 1.0, 1.0, 0.0;
-  inputs_.at(2) << -1.0, 1.0, 0.0;
+  inputs_.at(1) << 1.0, 0.0, 0.0;
+  inputs_.at(2) << -1.0, 0.0, 0.0;
+  inputs_.at(3) << 1.0, 1.0, 0.0;
 
   initializePrimitives();
 
   p_targ << init_pos_x_, init_pos_y_, init_pos_z_;
   v_targ << 0.0, 0.0, 0.0;
   motion_selector_ = 1;
-
 }
 
 void trajectoryPublisher::setTrajectoryTheta(double in) {
