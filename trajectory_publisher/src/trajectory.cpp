@@ -102,6 +102,7 @@ Eigen::Vector3d trajectory::getPosition(double time){
 
   switch(type_) {
     case TRAJ_ZERO :
+
       position << 0.0, 0.0, 0.0;
       break;
     case TRAJ_POLYNOMIAL :
@@ -118,6 +119,7 @@ Eigen::Vector3d trajectory::getPosition(double time){
       break;
     case TRAJ_LAMNISCATE : //Lemniscate of Genero
 
+      theta = traj_omega_* time;
       position = std::cos(theta) * target_initpos
                + std::sin(theta) * std::cos(theta) * traj_axis_.cross(target_initpos)
                + (1 - std::cos(theta)) * traj_axis_.dot(target_initpos) * traj_axis_;
@@ -132,15 +134,18 @@ Eigen::Vector3d trajectory::getVelocity(double time){
 
   switch(type_) {
     case TRAJ_POLYNOMIAL :
+
       velocity << c_x_(1) + c_x_(2) * time * 2 + c_x_(3) * pow(time, 2) * 3,
               c_y_(1) + c_y_(2) * time * 2 + c_y_(3) * pow(time, 2) * 3,
               c_z_(1) + c_z_(2) * time * 2 + c_z_(3) * pow(time, 2) * 3;
+      break;
 
     case TRAJ_CIRCLE :
+
       velocity = traj_omega_ * traj_axis_.cross(getPosition(time));
+      break;
   }
   return velocity;
-
 }
 
 nav_msgs::Path trajectory::getSegment(){
