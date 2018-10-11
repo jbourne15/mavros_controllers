@@ -3,7 +3,9 @@ project(trajectory_publisher)
 
 include_directories(${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS})
 
-find_package(catkin_simple REQUIRED)
+find_package(catkin_simple REQUIRED
+  mav_trajectory_generation_ros
+  )
 catkin_simple(ALL_DEPS_REQUIRED)
 
 add_definitions(-std=c++11)

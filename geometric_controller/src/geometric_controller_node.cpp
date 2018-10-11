@@ -8,9 +8,26 @@ using namespace std;
 geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& nh_private):
   nh_(nh),
   nh_private_(nh_private),
+  max_motor_speed_(150),
   fail_detec_(false),
   ctrl_enable_(true),
-  landing_commanded_(false){
+  landing_commanded_(false),
+  ctrl_mode_(2){
+
+  /// Target State is the reference state received from the trajectory
+  /// goalState is the goal the controller is trying to reach
+  goalPos_ << 0.0, 0.0, 1.5; //Initial Position
+  targetPos_ = goalPos_;
+  targetVel_ << 0.0, 0.0, 0.0;
+  mavYaw_ = 0.0;
+  g_ << 0.0, 0.0, -9.8;
+  Kpos_ << -3.0, -5.0, -20.0;
+  Kvel_ << -2.0, -4.0, -5.0;
+  D_ << 0.0, 0.0, 0.0;
+  attctrl_tau_ = 0.2;
+  norm_thrust_const_ = .1;//0.1; // 1 / max acceleration
+  max_fb_acc_ = 7.0;
+  use_gzstates_ = false;//true;//true;
 
   referenceSub_=nh_.subscribe("reference/setpoint",1, &geometricCtrl::targetCallback,this,ros::TransportHints().tcpNoDelay());
   flatreferenceSub_ = nh_.subscribe("reference/flatsetpoint", 1, &geometricCtrl::flattargetCallback, this, ros::TransportHints().tcpNoDelay());
@@ -31,22 +48,6 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<string>("/geometric_controller/mavname", mav_name_, "iris");
   nh_.param<int>("/geometric_controller/ctrl_mode", ctrl_mode_, MODE_BODYRATE);
   nh_.param<bool>("/geometric_controller/enable_sim", sim_enable_, true);
-  nh_.param<bool>("/geometric_controller/enable_gazebo_state", use_gzstates_, false);
-  nh_.param<double>("/geometric_controller/max_acc", max_fb_acc_, 7.0);
-  nh_.param<double>("/geometric_controller/yaw_heading", mavYaw_, 0.0);
-  nh_.param<double>("/geometric_controller/drag_dx", dx_, 0.0);
-  nh_.param<double>("/geometric_controller/drag_dy", dy_, 0.0);
-  nh_.param<double>("/geometric_controller/drag_dz", dz_, 0.0);
-  nh_.param<double>("/geometric_controller/attctrl_constant", attctrl_tau_, 0.2);
-  nh_.param<double>("/geometric_controller/normalizedthrust_constant", norm_thrust_const_, 0.1); // 1 / max acceleration
-
-  targetPos_ << 0.0, 0.0, 1.5; //Initial Position
-  targetVel_ << 0.0, 0.0, 0.0;
-  g_ << 0.0, 0.0, -9.8;
-  Kpos_ << -3.0, -5.0, -20.0;
-  Kvel_ << -2.0, -4.0, -5.0;
-  D_ << dx_, dy_, dz_;
-
 }
 geometricCtrl::~geometricCtrl() {
   //Destructor
@@ -56,7 +57,7 @@ void geometricCtrl::targetCallback(const geometry_msgs::TwistStamped& msg) {
 
   reference_request_last_ = reference_request_now_;
   targetPos_prev_ = targetPos_;
-  targetVel_prev_ = targetVel_;
+  targetVel_prev_ = targetVel_; // this needs to have CA added to it!!!!!!
 
   reference_request_now_ = ros::Time::now();
   reference_request_dt_ = (reference_request_now_ - reference_request_last_).toSec();
@@ -64,7 +65,16 @@ void geometricCtrl::targetCallback(const geometry_msgs::TwistStamped& msg) {
   targetPos_ << msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z;
   targetVel_ << msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z;
 
-  if(reference_request_dt_ > 0) targetAcc_ = (targetVel_ - targetVel_prev_ ) / reference_request_dt_;
+  if (targetVel_.norm()>=0.25){
+    mavYaw_ = std::atan2(targetVel_(1),targetVel_(0));
+  }
+  else{
+    mavYaw_ = tf::getYaw(tf::Quaternion(mavAtt_(1), mavAtt_(2), mavAtt_(3), mavAtt_(0)));
+  }
+
+  mavYaw_ = 0;
+    
+  if(reference_request_dt_ > 0) targetAcc_ = (targetVel_ - targetVel_prev_ ) / reference_request_dt_; // I can get this from trajectory!!!
   else targetAcc_ = Eigen::Vector3d::Zero();
 
 }
@@ -74,7 +84,7 @@ void geometricCtrl::flattargetCallback(const controller_msgs::FlatTarget& msg) {
   reference_request_last_ = reference_request_now_;
 
   targetPos_prev_ = targetPos_;
-  targetVel_prev_ = targetVel_;
+  targetVel_prev_ = targetVel_; 
 
   reference_request_now_ = ros::Time::now();
   reference_request_dt_ = (reference_request_now_ - reference_request_last_).toSec();
@@ -305,11 +315,11 @@ Eigen::Vector4d geometricCtrl::acc2quaternion(Eigen::Vector3d vector_acc, double
   yc = Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ())*Eigen::Vector3d::UnitY();
   zb_des = vector_acc / vector_acc.norm();
   xb_des = yc.cross(zb_des) / ( yc.cross(zb_des) ).norm();
+  yb_des = zb_des.cross(xb_des) / (zb_des.cross(xb_des)).norm();
   rotmat << xb_des(0), yb_des(0), zb_des(0),
             xb_des(1), yb_des(1), zb_des(1),
             xb_des(2), yb_des(2), zb_des(2);
-  quat = rot2Quaternion(rotmat);
-  yb_des = zb_des.cross(xb_des) / (zb_des.cross(xb_des)).norm();
+  quat = rot2Quaternion(rotmat);  
   return quat;
 }
 
