@@ -21,7 +21,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   targetVel_ << 0.0, 0.0, 0.0;
   mavYaw_ = 0.0;
   g_ << 0.0, 0.0, -9.8;
-  Kpos_ << -3.0, -5.0, -20.0;
+  Kpos_ << -3.0, -5.0, -40.0;
   Kvel_ << -2.0, -4.0, -5.0;
   D_ << 0.0, 0.0, 0.0;
   attctrl_tau_ = 0.2;
@@ -29,25 +29,40 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   max_fb_acc_ = 7.0;
   use_gzstates_ = false;//true;//true;
 
-  referenceSub_=nh_.subscribe("reference/setpoint",1, &geometricCtrl::targetCallback,this,ros::TransportHints().tcpNoDelay());
-  flatreferenceSub_ = nh_.subscribe("reference/flatsetpoint", 1, &geometricCtrl::flattargetCallback, this, ros::TransportHints().tcpNoDelay());
-  mavstateSub_ = nh_.subscribe("/mavros/state", 1, &geometricCtrl::mavstateCallback, this,ros::TransportHints().tcpNoDelay());
-  mavposeSub_ = nh_.subscribe("/mavros/local_position/pose", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
-  gzmavposeSub_ = nh_.subscribe("/gazebo/model_states", 1, &geometricCtrl::gzmavposeCallback, this, ros::TransportHints().tcpNoDelay());
-  mavtwistSub_ = nh_.subscribe("/mavros/local_position/velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
-  ctrltriggerServ_ = nh_.advertiseService("tigger_rlcontroller", &geometricCtrl::ctrltriggerCallback, this);
+  agentName = ros::this_node::getNamespace();  
+  agentName.erase(0,1);
+  newVelData=false;
+
+  referenceSub_=nh_.subscribe(agentName+"/reference/setpoint",1, &geometricCtrl::targetCallback,this,ros::TransportHints().tcpNoDelay());
+  flatreferenceSub_ = nh_.subscribe(agentName+"/reference/flatsetpoint", 1, &geometricCtrl::flattargetCallback, this, ros::TransportHints().tcpNoDelay());
+  mavstateSub_ = nh_.subscribe(agentName+"/mavros/state", 1, &geometricCtrl::mavstateCallback, this,ros::TransportHints().tcpNoDelay());
+  // mavposeSub_ = nh_.subscribe(agentName+"/mavros/local_position/pose", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
+  mavposeSub_ = nh_.subscribe(agentName+"/local_position", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
+  
+  mavtwistSub_ = nh_.subscribe(agentName+"/mavros/local_position/velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
+   // mavtwistSub_ = nh_.subscribe(agentName+"/local_velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
+  
+    gzmavposeSub_ = nh_.subscribe("/gazebo/model_states", 1, &geometricCtrl::gzmavposeCallback, this, ros::TransportHints().tcpNoDelay());
+  ctrltriggerServ_ = nh_.advertiseService(agentName+"/tigger_rlcontroller", &geometricCtrl::ctrltriggerCallback, this);
   cmdloop_timer_ = nh_.createTimer(ros::Duration(0.01), &geometricCtrl::cmdloopCallback, this); // Define timer for constant loop rate
   statusloop_timer_ = nh_.createTimer(ros::Duration(1), &geometricCtrl::statusloopCallback, this); // Define timer for constant loop rate
 
-  angularVelPub_ = nh_.advertise<mavros_msgs::AttitudeTarget>("command/bodyrate_command", 1);
-  referencePosePub_ = nh_.advertise<geometry_msgs::PoseStamped>("reference/pose", 1);
+  angularVelPub_ = nh_.advertise<mavros_msgs::AttitudeTarget>(agentName+"/command/bodyrate_command", 1);
+  referencePosePub_ = nh_.advertise<geometry_msgs::PoseStamped>(agentName+"/reference/pose", 1);
 
-  arming_client_ = nh_.serviceClient<mavros_msgs::CommandBool>("/mavros/cmd/arming");
-  set_mode_client_ = nh_.serviceClient<mavros_msgs::SetMode>("/mavros/set_mode");
+  arming_client_ = nh_.serviceClient<mavros_msgs::CommandBool>(agentName+"/mavros/cmd/arming");
+  set_mode_client_ = nh_.serviceClient<mavros_msgs::SetMode>(agentName+"/mavros/set_mode");
+  
+  frame_client    = nh_.serviceClient<mavros_msgs::SetMavFrame>(agentName+"/mavros/mav_frame");
+  
+  mav_frame.request.mav_frame = mav_frame.request.FRAME_BODY_NED;
+  frame_client.call(mav_frame);
 
   nh_.param<string>("/geometric_controller/mavname", mav_name_, "iris");
   nh_.param<int>("/geometric_controller/ctrl_mode", ctrl_mode_, MODE_BODYRATE);
   nh_.param<bool>("/geometric_controller/enable_sim", sim_enable_, true);
+
+  // ros::Duration(15.0).sleep(); // sleep for half a second
 }
 geometricCtrl::~geometricCtrl() {
   //Destructor
@@ -139,6 +154,7 @@ void geometricCtrl::mavtwistCallback(const geometry_msgs::TwistStamped& msg){
     mavRate_(0) = msg.twist.angular.x;
     mavRate_(1) = msg.twist.angular.y;
     mavRate_(2) = msg.twist.angular.z;
+    newVelData=true;
   }
 }
 
@@ -209,7 +225,7 @@ void geometricCtrl::statusloopCallback(const ros::TimerEvent& event){
 
 void geometricCtrl::pubReferencePose(){
   referencePoseMsg_.header.stamp = ros::Time::now();
-  referencePoseMsg_.header.frame_id = "map";
+  referencePoseMsg_.header.frame_id = "world";
   referencePoseMsg_.pose.position.x = targetPos_(0);
   referencePoseMsg_.pose.position.y = targetPos_(1);
   referencePoseMsg_.pose.position.z = targetPos_(2);
@@ -222,7 +238,7 @@ void geometricCtrl::pubReferencePose(){
 
 void geometricCtrl::pubRateCommands(){
   angularVelMsg_.header.stamp = ros::Time::now();
-  angularVelMsg_.header.frame_id= "map";
+  angularVelMsg_.header.frame_id= "world";
   angularVelMsg_.body_rate.x = cmdBodyRate_(0);
   angularVelMsg_.body_rate.y = cmdBodyRate_(1) * -1.0;
   angularVelMsg_.body_rate.z = cmdBodyRate_(2) * -1.0;
@@ -249,6 +265,13 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
   a_des = a_fb + a_ref - a_rd - g_;
   q_des = acc2quaternion(a_des, mavYaw_);
 
+  // std::cout<<"pos:"<<std::endl;
+  // std::cout<<errorPos_[2]<<std::endl;
+  // std::cout<<"vel:"<<std::endl;
+  // std::cout<<errorVel_<<std::endl;
+  // std::cout<<"acc:"<<std::endl;
+  // std::cout<<a_ref<<std::endl;  
+  
   cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
 }
 
@@ -336,7 +359,8 @@ Eigen::Vector4d geometricCtrl::attcontroller(Eigen::Vector4d &ref_att, Eigen::Ve
   ratecmd(2) = (2.0 / attctrl_tau_) * std::copysign(1.0, qe(0)) * qe(3);
   rotmat = quat2RotMatrix(mavAtt_);
   zb = rotmat.col(2);
-  ratecmd(3) = std::max(0.0, std::min(1.0, norm_thrust_const_ * ref_acc.dot(zb))); //Calculate thrust
+  // ratecmd(3) = std::max(0.0, std::min(1.0, norm_thrust_const_ * ref_acc.dot(zb))); //Calculate thrust
+  ratecmd(3) = std::max(0.0, norm_thrust_const_ * ref_acc.dot(zb)); //Calculate thrust
   return ratecmd;
 }
 

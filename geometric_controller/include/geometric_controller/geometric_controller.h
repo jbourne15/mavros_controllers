@@ -29,6 +29,7 @@
 #include <controller_msgs/FlatTarget.h>
 #include <std_srvs/SetBool.h>
 #include <gazebo_msgs/ModelStates.h>
+#include <mavros_msgs/SetMavFrame.h>
 
 #define MODE_ROTORTHRUST  1
 #define MODE_BODYRATE     2
@@ -53,12 +54,14 @@ class geometricCtrl
     ros::Publisher referencePosePub_;
     ros::ServiceClient arming_client_;
     ros::ServiceClient set_mode_client_;
+    ros::ServiceClient frame_client;
     ros::ServiceServer ctrltriggerServ_;
     ros::Timer cmdloop_timer_, statusloop_timer_;
     ros::Time last_request_, reference_request_now_, reference_request_last_;
 
     int num_rotors_;
     string mav_name_;
+    std::string agentName;   
     int max_motor_speed_;
     bool fail_detec_, ctrl_enable_;
     int ctrl_mode_;
@@ -69,6 +72,8 @@ class geometricCtrl
     double attctrl_tau_;
     double norm_thrust_const_;
     double max_fb_acc_;
+    bool newVelData;
+    mavros_msgs::SetMavFrame mav_frame;
 
     mavros_msgs::State current_state_;
     mavros_msgs::SetMode offb_set_mode_;

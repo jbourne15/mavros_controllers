@@ -14,5 +14,5 @@ add_message_files(
 generate_messages(DEPENDENCIES geometry_msgs sensor_msgs std_msgs)
 
 catkin_package(
-  INCLUDE_DIRS include
+  INCLUDE_DIRS #include
   CATKIN_DEPENDS geometry_msgs sensor_msgs message_runtime std_msgs)

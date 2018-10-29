@@ -98,18 +98,30 @@ void trajectoryPublisher::getPolyTrajectory(void){
   // middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(0,0,1));
   // vertices.push_back(middle);
 
+
+  // middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(0,2,2));
+  // // middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,0));
+  // // middle.addConstraint(mav_trajectory_generation::derivative_order::ORIENTATION, 10*M_PI/180.0);
+  // vertices.push_back(middle);
+
+  
+  
+
   middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(2,2,2));
   // middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,0));
   // middle.addConstraint(mav_trajectory_generation::derivative_order::ORIENTATION, 10*M_PI/180.0);
   vertices.push_back(middle);
 
   
-  middle2.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-2,2,5));
+  middle2.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-2,2,10));
   vertices.push_back(middle2);
 
 
   middle2.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-2,-2,2));
   vertices.push_back(middle2);
+
+
+  
 
   // middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,-.5));
   // vertices.push_back(middle);
@@ -130,10 +142,14 @@ void trajectoryPublisher::getPolyTrajectory(void){
   vertices.push_back(end);
 
   // 3. compute the segment times
-  std::vector<double> segment_times(vertices.size()-1,2);
+  std::vector<double> segment_times(vertices.size()-1,5);
   // std::vector<double> segment_times;
-  const double v_max = 2.0;
-  const double a_max = 6.0;
+  const double v_max = 5.5;
+  const double a_max = 1.0*9.81;
+
+  // input_constraints.addConstraint(ICT::kFMax, 1.5 * 9.81); // maximum acceleration in [m/s/s].
+  // input_constraints.addConstraint(ICT::kVMax, 5.5); // maximum velocity in [m/s].
+  
   // segment_times = mav_trajectory_generation::estimateSegmentTimes(vertices, v_max, a_max);
 
   
@@ -246,7 +262,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
 
   //For a simple visualization:
   double distance = .25; // Distance by which to seperate additional markers. Set 0.0 to disable.
-  std::string frame_id = "map";
+  std::string frame_id = "world";
 
   // visualization_msgs::MarkerArray markers;
   
@@ -276,7 +292,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
   // error in next line
   typedef mav_trajectory_generation::InputConstraintType ICT;
   mav_trajectory_generation::InputConstraints input_constraints;
-  input_constraints.addConstraint(ICT::kFMin, 0.5 * 9.81); // minimum acceleration in [m/s/s].
+  input_constraints.addConstraint(ICT::kFMin, 0.0 * 9.81); // minimum acceleration in [m/s/s].
   input_constraints.addConstraint(ICT::kFMax, 1.5 * 9.81); // maximum acceleration in [m/s/s].
   input_constraints.addConstraint(ICT::kVMax, 5.5); // maximum velocity in [m/s].
   input_constraints.addConstraint(ICT::kOmegaXYMax, M_PI / 2.0); // maximum roll/pitch rates in [rad/s].
@@ -393,7 +409,7 @@ double trajectoryPublisher::getTrajectoryUpdateRate(){
 geometry_msgs::PoseStamped trajectoryPublisher::vector3d2PoseStampedMsg(Eigen::Vector3d position, Eigen::Vector4d orientation){
   geometry_msgs::PoseStamped encode_msg;
   encode_msg.header.stamp = ros::Time::now();
-  encode_msg.header.frame_id = "map";
+  encode_msg.header.frame_id = "world";
   encode_msg.pose.orientation.w = orientation(0);
   encode_msg.pose.orientation.x = orientation(1);
   encode_msg.pose.orientation.y = orientation(2);
@@ -428,7 +444,7 @@ for(int i = 0 ; i < N ; i++){
 
 void trajectoryPublisher::pubrefState(){
   refState_.header.stamp = ros::Time::now();
-  refState_.header.frame_id = "map";
+  refState_.header.frame_id = "world";
   refState_.twist.angular.x = p_targ(0);
   refState_.twist.angular.y = p_targ(1);
   refState_.twist.angular.z = p_targ(2);
