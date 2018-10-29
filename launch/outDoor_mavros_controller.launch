@@ -1,0 +1,47 @@
+<launch>
+  <arg name="bag_name" default="bag_name"/>
+  <arg name="AGENT_NUMBER" value="1"/>
+  <include file="$(find mavros)/launch/px4.launch">
+    <arg name="tgt_system" default="$(arg AGENT_NUMBER)" />
+  </include>
+    
+  <param name="/mavros/global_position/tf/send" value="true" type="bool" />
+  <param name="/mavros/global_position/tf/child_frame_id" value="base_link$(arg AGENT_NUMBER)" type="str" />
+  <param name="/mavros/global_position/tf/frame_id" value="home$(arg AGENT_NUMBER)" type="str" />
+  <param name="/mavros/global_position/frame_id" value="home$(arg AGENT_NUMBER)" type="str" />
+    
+  <node pkg="rosbag" type="record" name="bagging_client"
+      args="-a -o ../Videos/$(arg bag_name) -x /scan" respawn="true"/>
+      	
+  <arg name="command_input" default="2" />
+  <arg name="visualization" default="true"/>
+
+  <node pkg="geometric_controller" type="geometric_controller" name="geometric_controller" output="screen">
+    <remap from="command/bodyrate_command" to="/mavros/setpoint_raw/attitude"/>
+    <param name="ctrl_mode" value="$(arg command_input)" />
+  </node>
+
+  <node pkg="trajectory_publisher" type="trajectory_publisher" name="trajectory_publisher" output="screen">
+    <param name="initpos_x" value="0" type="double"/>
+    <param name="initpos_y" value="0" type="double"/>
+    <param name="initpos_z" value="0" type="double"/>
+    <param name="trajectoryID" value="3" type="int"/>
+    <param name="mode" value="2" type="int"/>
+  </node>
+
+  <node pkg="geodetic_utils" type="gps_to_pose_conversion_node" name="geodetic" output="screen" respawn="true">
+	<param name="tf_child_frame_id" value="gps_receiver$(arg agent_num)" type="str"/>
+  </node>
+
+  <group if="$(arg visualization)">
+      <node type="rviz" name="rviz" pkg="rviz" args="-d $(find geometric_controller)/launch/config_file.rviz" />
+  </group>
+
+  <node pkg="mavros_extras" type="copter_visualization" name="quad_vis" respawn="true">
+    <param name="fixed_frame_id" value="/world" type="string"/>
+    <param name="child_frame_id" value="/gps_receiver$(arg agent_num)" type="string"/>
+    <param name="marker_scale" value="3" type="double"/>
+  </node>
+
+
+</launch>
