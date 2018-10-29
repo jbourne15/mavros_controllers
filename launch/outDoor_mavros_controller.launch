@@ -1,6 +1,6 @@
 <launch>
   <arg name="bag_name" default="bag_name"/>
-  <arg name="AGENT_NUMBER" value="1"/>
+  <arg name="AGENT_NUMBER" value="5"/>
   <include file="$(find mavros)/launch/px4.launch">
     <arg name="tgt_system" default="$(arg AGENT_NUMBER)" />
   </include>
@@ -14,7 +14,8 @@
       args="-a -o ../Videos/$(arg bag_name) -x /scan" respawn="true"/>
       	
   <arg name="command_input" default="2" />
-  <arg name="visualization" default="true"/>
+  <arg name="visualization" default="false"/>
+    
 
   <node pkg="geometric_controller" type="geometric_controller" name="geometric_controller" output="screen">
     <remap from="command/bodyrate_command" to="/mavros/setpoint_raw/attitude"/>
@@ -30,18 +31,16 @@
   </node>
 
   <node pkg="geodetic_utils" type="gps_to_pose_conversion_node" name="geodetic" output="screen" respawn="true">
-	<param name="tf_child_frame_id" value="gps_receiver$(arg agent_num)" type="str"/>
+	<param name="tf_child_frame_id" value="gps_receiver$(arg AGENT_NUMBER)" type="str"/>
+  </node>
+
+  <node pkg="mavros_extras" type="copter_visualization" name="quad_vis" respawn="true">
+    <param name="fixed_frame_id" value="/world" type="string"/>
+    <param name="child_frame_id" value="/gps_receiver$(arg AGENT_NUMBER)" type="string"/>
+    <param name="marker_scale" value="3" type="double"/>
   </node>
 
   <group if="$(arg visualization)">
       <node type="rviz" name="rviz" pkg="rviz" args="-d $(find geometric_controller)/launch/config_file.rviz" />
   </group>
-
-  <node pkg="mavros_extras" type="copter_visualization" name="quad_vis" respawn="true">
-    <param name="fixed_frame_id" value="/world" type="string"/>
-    <param name="child_frame_id" value="/gps_receiver$(arg agent_num)" type="string"/>
-    <param name="marker_scale" value="3" type="double"/>
-  </node>
-
-
 </launch>

@@ -26,6 +26,7 @@
 #include <mavros_msgs/State.h>
 #include <mavros_msgs/CommandBool.h>
 #include <mavros_msgs/AttitudeTarget.h>
+#include <mavros_msgs/RCIn.h>
 #include <controller_msgs/FlatTarget.h>
 #include <std_srvs/SetBool.h>
 #include <gazebo_msgs/ModelStates.h>
@@ -50,6 +51,7 @@ class geometricCtrl
     ros::Subscriber mavstateSub_;
     ros::Subscriber mavposeSub_, gzmavposeSub_;
     ros::Subscriber mavtwistSub_;
+    ros::Subscriber rcSub_;  
     ros::Publisher rotorVelPub_, angularVelPub_;
     ros::Publisher referencePosePub_;
     ros::ServiceClient arming_client_;
@@ -59,6 +61,8 @@ class geometricCtrl
     ros::Timer cmdloop_timer_, statusloop_timer_;
     ros::Time last_request_, reference_request_now_, reference_request_last_;
 
+    int mode;
+    mavros_msgs::RCIn  RCin;
     int num_rotors_;
     string mav_name_;
     std::string agentName;   
@@ -93,6 +97,7 @@ class geometricCtrl
     void pubRateCommands();
     void pubReferencePose();
     void odomCallback(const nav_msgs::OdometryConstPtr& odomMsg);
+    void rc_command_callback(const mavros_msgs::RCIn::ConstPtr &new_message);
     void targetCallback(const geometry_msgs::TwistStamped& msg);
     void flattargetCallback(const controller_msgs::FlatTarget& msg);
     void keyboardCallback(const geometry_msgs::Twist& msg);

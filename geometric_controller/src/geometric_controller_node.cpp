@@ -33,6 +33,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   agentName.erase(0,1);
   newVelData=false;
 
+  rcSub_ = nh_.subscribe(agentName+"/mavros/rc/in",1,&geometricCtrl::rc_command_callback,this,ros::TransportHints().tcpNoDelay());
   referenceSub_=nh_.subscribe(agentName+"/reference/setpoint",1, &geometricCtrl::targetCallback,this,ros::TransportHints().tcpNoDelay());
   flatreferenceSub_ = nh_.subscribe(agentName+"/reference/flatsetpoint", 1, &geometricCtrl::flattargetCallback, this, ros::TransportHints().tcpNoDelay());
   mavstateSub_ = nh_.subscribe(agentName+"/mavros/state", 1, &geometricCtrl::mavstateCallback, this,ros::TransportHints().tcpNoDelay());
@@ -67,6 +68,13 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 geometricCtrl::~geometricCtrl() {
   //Destructor
 }
+
+void geometricCtrl::rc_command_callback(const mavros_msgs::RCIn::ConstPtr &new_message)
+{
+  RCin = *new_message;
+  mode = RCin.channels[4];
+}
+
 
 void geometricCtrl::targetCallback(const geometry_msgs::TwistStamped& msg) {
 
@@ -182,7 +190,7 @@ void geometricCtrl::gzmavposeCallback(const gazebo_msgs::ModelStates& msg){
 }
 
 void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
-  if(sim_enable_){
+  if(sim_enable_ && mode<1100){
     // Enable OFFBoard mode and arm automatically
     // This is only run if the vehicle is simulated
     arm_cmd_.request.value = true;
