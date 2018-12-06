@@ -81,7 +81,7 @@ void trajectoryPublisher::setTrajectory(int ID) {
 void trajectoryPublisher::getPolyTrajectory(void){
   ros::Time stime = ros::Time::now();
   mav_trajectory_generation::Vertex::Vector vertices;
-  mav_trajectory_generation::Vertex start(dimension), middle(dimension), middle2(dimension), middle3(dimension), end(dimension);
+  mav_trajectory_generation::Vertex start(dimension), middle(dimension), middle2(dimension), middle3(dimension), middle4(dimension), end(dimension);
   // 2. Add constraints to the vertices
   start.makeStartOrEnd(Eigen::Vector3d(0,0,2), derivative_to_optimize);
   vertices.push_back(start);
@@ -107,19 +107,18 @@ void trajectoryPublisher::getPolyTrajectory(void){
   
   
 
-  middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(2,2,2));
+  middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(2,2,3));
   // middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,0));
   // middle.addConstraint(mav_trajectory_generation::derivative_order::ORIENTATION, 10*M_PI/180.0);
   vertices.push_back(middle);
 
   
-  middle2.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-2,2,10));
-  vertices.push_back(middle2);
+  middle3.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-2,2,1));
+  vertices.push_back(middle3);
 
 
-  middle2.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-2,-2,2));
-  vertices.push_back(middle2);
-
+  middle4.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(2,-2,3));
+  vertices.push_back(middle4);
 
   
 
@@ -142,15 +141,16 @@ void trajectoryPublisher::getPolyTrajectory(void){
   vertices.push_back(end);
 
   // 3. compute the segment times
-  std::vector<double> segment_times(vertices.size()-1,5);
-  // std::vector<double> segment_times;
-  const double v_max = 5.5;
-  const double a_max = 1.0*9.81;
+  // std::vector<double> segment_times(vertices.size()-1,50);
+  std::vector<double> segment_times;
+  const double v_max = 4.0;
+  const double a_max = 2.5;
+  const double j_max = 1000.0;
 
   // input_constraints.addConstraint(ICT::kFMax, 1.5 * 9.81); // maximum acceleration in [m/s/s].
   // input_constraints.addConstraint(ICT::kVMax, 5.5); // maximum velocity in [m/s].
   
-  // segment_times = mav_trajectory_generation::estimateSegmentTimes(vertices, v_max, a_max);
+  segment_times = mav_trajectory_generation::estimateSegmentTimes(vertices, v_max, a_max);
 
   
   // // 4. Create an optimizer object and solve. The template parameter (N) denotes the number of coefficients of the underlying polynomial,
@@ -174,13 +174,23 @@ void trajectoryPublisher::getPolyTrajectory(void){
 
   // 2. Set the parameters for nonlinear optimization. Below is an example, but the default parameters should be reasonable enough to use without fine-tuning.
   // mav_trajectory_generation::NonlinearOptimizationParameters parameters;
-  parameters.max_iterations = 1000;
+  parameters.max_iterations = 2000;
   parameters.f_rel = 0.05;
   parameters.x_rel = 0.1;
   parameters.time_penalty = 500.0;
   parameters.initial_stepsize_rel = 0.1;
-  parameters.inequality_constraint_tolerance = 0.1;
+  parameters.inequality_constraint_tolerance = 0.01;
+  // parameters.time_alloc_method =
+    // mav_trajectory_generation::NonlinearOptimizationParameters::kSquaredTime;
+  // parameters.time_alloc_method =
+      // mav_trajectory_generation::NonlinearOptimizationParameters::kSquaredTimeAndConstraints;
+  // parameters.time_alloc_method =
+    // mav_trajectory_generation::NonlinearOptimizationParameters::kRichterTimeAndConstraints;
 
+  parameters.algorithm = nlopt::LD_LBFGS;
+  parameters.time_alloc_method =
+    mav_trajectory_generation::NonlinearOptimizationParameters::kMellingerOuterLoop;
+  
   // 3. Create an optimizer object and solve. The third argument of the optimization object (true/false) specifies whether the optimization is run over the segment times only.
 
   const int Nnl = 10;
@@ -189,6 +199,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
   nlOpt.setupFromVertices(vertices, segment_times, derivative_to_optimize);
   nlOpt.addMaximumMagnitudeConstraint(mav_trajectory_generation::derivative_order::VELOCITY, v_max);
   nlOpt.addMaximumMagnitudeConstraint(mav_trajectory_generation::derivative_order::ACCELERATION, a_max);
+  nlOpt.addMaximumMagnitudeConstraint(mav_trajectory_generation::derivative_order::JERK, j_max);
   nlOpt.optimize();
 
 
@@ -287,17 +298,16 @@ void trajectoryPublisher::getPolyTrajectory(void){
 
   // std::cout<<markers<<std::endl;
 
-  std::cout<<"total compute time: "<<ros::Time::now().toSec()-stime.toSec()<<std::endl;
 
   // error in next line
   typedef mav_trajectory_generation::InputConstraintType ICT;
   mav_trajectory_generation::InputConstraints input_constraints;
   input_constraints.addConstraint(ICT::kFMin, 0.0 * 9.81); // minimum acceleration in [m/s/s].
-  input_constraints.addConstraint(ICT::kFMax, 1.5 * 9.81); // maximum acceleration in [m/s/s].
-  input_constraints.addConstraint(ICT::kVMax, 5.5); // maximum velocity in [m/s].
+  input_constraints.addConstraint(ICT::kFMax, a_max+9.81); // maximum acceleration in [m/s/s].
+  input_constraints.addConstraint(ICT::kVMax, v_max); // maximum velocity in [m/s].
   input_constraints.addConstraint(ICT::kOmegaXYMax, M_PI / 2.0); // maximum roll/pitch rates in [rad/s].
-  input_constraints.addConstraint(ICT::kOmegaZMax, M_PI / 2.0); // maximum yaw rates in [rad/s].
-  input_constraints.addConstraint(ICT::kOmegaZDotMax, M_PI); // maximum yaw acceleration in [rad/s/s].
+  // input_constraints.addConstraint(ICT::kOmegaZMax, M_PI / 2.0); // maximum yaw rates in [rad/s].
+  // input_constraints.addConstraint(ICT::kOmegaZDotMax, M_PI); // maximum yaw acceleration in [rad/s/s].
 
   // Create feasibility object of choice (FeasibilityAnalytic,
   // FeasibilitySampling, FeasibilityRecursive).
@@ -323,7 +333,8 @@ void trajectoryPublisher::getPolyTrajectory(void){
     // std::cout<<"segment: "<<segments[i]<<std::endl;
 
   }
-    
+  std::cout<<"total compute time: "<<ros::Time::now().toSec()-stime.toSec()<<std::endl;
+  
   start_time_ = ros::Time::now();
 
 }
@@ -451,8 +462,8 @@ void trajectoryPublisher::pubrefState(){
   refState_.twist.linear.x = v_targ(0);
   refState_.twist.linear.y = v_targ(1);
   refState_.twist.linear.z = v_targ(2);
-
-  // std::cout<<refState_<<std::endl;
+  
+  // std::cout<<(v_targ.norm()>2.5)<<", "<<v_targ.norm()<<std::endl;
   referencePub_.publish(refState_);
 }
 
