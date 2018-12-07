@@ -62,6 +62,8 @@ class geometricCtrl
     ros::Time last_request_, reference_request_now_, reference_request_last_;
 
     int mode;
+    std::vector<double> desiredRate, desiredAtt;
+    bool tuneRate, tuneAtt;
     mavros_msgs::RCIn  RCin;
     int num_rotors_;
     string mav_name_;

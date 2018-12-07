@@ -1,0 +1,22 @@
+<launch>
+  <arg name="bag_name" default="tuneBagQ5"/>
+  <arg name="AGENT_NUMBER" value="5"/>
+  <include file="$(find mavros)/launch/px4.launch">
+    <arg name="tgt_system" default="$(arg AGENT_NUMBER)" />
+  </include>
+        
+  <node pkg="rosbag" type="record" name="bagging_client"
+      args="-a -o ../Videos/$(arg bag_name) -x /scan" respawn="true"/>
+      	
+  <arg name="command_input" default="2" />
+  <arg name="visualization" default="false"/>
+
+  <node pkg="geometric_controller" type="geometric_controller" name="geometric_controller" output="screen">
+    <remap from="command/bodyrate_command" to="/mavros/setpoint_raw/attitude"/>
+    <param name="ctrl_mode" value="$(arg command_input)" />
+    <param name="enable_sim" value="false" />
+    <rosparam file="$(find geometric_controller)/tuningParameters.yaml" command="load"/>
+       
+  </node>
+
+</launch>

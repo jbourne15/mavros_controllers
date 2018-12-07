@@ -1,0 +1,14 @@
+# rate loop
+#-----------------------------------#
+tuneRate: true
+desiredRate: [1,0,0,.1] # wx,wy,wz,thrust ie roll pitch yaw rates in rad/sec
+# tuning parameter:
+# tune gains through Qgroundcontrol
+#-----------------------------------#
+# attitude loop
+tuneAtt: false
+desiredAtt: [0,0,-8] #  orientation vector
+# tuning parameter:
+attctrl_tau_: .2
+#-----------------------------------#
+

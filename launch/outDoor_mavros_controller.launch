@@ -20,6 +20,7 @@
   <node pkg="geometric_controller" type="geometric_controller" name="geometric_controller" output="screen">
     <remap from="command/bodyrate_command" to="/mavros/setpoint_raw/attitude"/>
     <param name="ctrl_mode" value="$(arg command_input)" />
+    <param name="enable_sim" value="false" />
   </node>
 
   <node pkg="trajectory_publisher" type="trajectory_publisher" name="trajectory_publisher" output="screen">

@@ -14,6 +14,8 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   landing_commanded_(false),
   ctrl_mode_(2){
 
+  mode=10000;
+
   /// Target State is the reference state received from the trajectory
   /// goalState is the goal the controller is trying to reach
   goalPos_ << 0.0, 0.0, 1.5; //Initial Position
@@ -33,13 +35,27 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   agentName.erase(0,1);
   newVelData=false;
 
+  nh_.param<string>("/geometric_controller/mavname", mav_name_, "iris");
+  nh_.param<int>("/geometric_controller/ctrl_mode", ctrl_mode_, MODE_BODYRATE);
+  nh_.param<bool>("/geometric_controller/enable_sim", sim_enable_, true);
+  nh_.param<bool>("/geometric_controller/tuneRate", tuneRate, false);
+  nh_.param<bool>("/geometric_controller/tuneAtt", tuneAtt, false);
+  nh_.getParam("/geometric_controller/desiredRate", desiredRate);
+  nh_.getParam("/geometric_controller/desiredAtt", desiredAtt);
+  nh_.param<double>("/geometric_controller/attctrl_tau_", attctrl_tau_,0.2);
+
+	    
   rcSub_ = nh_.subscribe(agentName+"/mavros/rc/in",1,&geometricCtrl::rc_command_callback,this,ros::TransportHints().tcpNoDelay());
   referenceSub_=nh_.subscribe(agentName+"/reference/setpoint",1, &geometricCtrl::targetCallback,this,ros::TransportHints().tcpNoDelay());
   flatreferenceSub_ = nh_.subscribe(agentName+"/reference/flatsetpoint", 1, &geometricCtrl::flattargetCallback, this, ros::TransportHints().tcpNoDelay());
   mavstateSub_ = nh_.subscribe(agentName+"/mavros/state", 1, &geometricCtrl::mavstateCallback, this,ros::TransportHints().tcpNoDelay());
-  // mavposeSub_ = nh_.subscribe(agentName+"/mavros/local_position/pose", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
-  mavposeSub_ = nh_.subscribe(agentName+"/local_position", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
-  
+
+  if(tuneAtt || tuneRate){
+    mavposeSub_ = nh_.subscribe(agentName+"/mavros/local_position/pose", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
+  }
+  else{  
+    mavposeSub_ = nh_.subscribe(agentName+"/local_position", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
+  }
   mavtwistSub_ = nh_.subscribe(agentName+"/mavros/local_position/velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
    // mavtwistSub_ = nh_.subscribe(agentName+"/local_velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
   
@@ -59,10 +75,12 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   mav_frame.request.mav_frame = mav_frame.request.FRAME_BODY_NED;
   frame_client.call(mav_frame);
 
-  nh_.param<string>("/geometric_controller/mavname", mav_name_, "iris");
-  nh_.param<int>("/geometric_controller/ctrl_mode", ctrl_mode_, MODE_BODYRATE);
-  nh_.param<bool>("/geometric_controller/enable_sim", sim_enable_, true);
+  if (tuneRate && tuneAtt){
+    ROS_ERROR("tuneRate=true and tuneAtt=true, only tune one");
+    while(ros::ok()){ros::Duration(20.0).sleep();}
+  }
 
+  
   // ros::Duration(15.0).sleep(); // sleep for half a second
 }
 geometricCtrl::~geometricCtrl() {
@@ -190,9 +208,9 @@ void geometricCtrl::gzmavposeCallback(const gazebo_msgs::ModelStates& msg){
 }
 
 void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
-  if(sim_enable_ && mode<1100){
+
+  if(sim_enable_ || mode<1100){
     // Enable OFFBoard mode and arm automatically
-    // This is only run if the vehicle is simulated
     arm_cmd_.request.value = true;
     offb_set_mode_.request.custom_mode = "OFFBOARD";
     if( current_state_.mode != "OFFBOARD" && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
@@ -209,6 +227,19 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
       }
     }
   }
+  else{
+    ROS_INFO_THROTTLE(5,"flip remote switch");
+    if (mode>1100 && (tuneAtt || tuneRate)){
+      arm_cmd_.request.value = false;
+      if( current_state_.armed && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
+        if( arming_client_.call(arm_cmd_) && arm_cmd_.response.success){
+          ROS_INFO("Vehicle disarmed");
+        }
+        last_request_ = ros::Time::now();
+      }
+
+    }
+  }
 
   //TODO: Enable Failsaif sutdown
   if(ctrl_mode_ == MODE_ROTORTHRUST){
@@ -217,6 +248,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
       computeBodyRateCmd(false);
       pubReferencePose();
       pubRateCommands();
+	
   } else if(ctrl_mode_ == MODE_BODYTORQUE){
     //TODO: implement actuator commands for mavros
   }
@@ -256,31 +288,59 @@ void geometricCtrl::pubRateCommands(){
 }
 
 void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
-  Eigen::Vector3d errorPos_, errorVel_;
-  Eigen::Matrix3d R_ref;
+  if (tuneRate){
+    ROS_INFO_ONCE("tuning rate");
+    nh_.getParam("/geometric_controller/desiredRate", desiredRate);
+    ROS_INFO_THROTTLE(3,"desiredRate: wx=%f, wy=%f, wz=%f, t=%f", desiredRate[0], desiredRate[1], desiredRate[2], desiredRate[3]);
+    cmdBodyRate_(0) = desiredRate[0]; // roll
+    cmdBodyRate_(1) = desiredRate[1]; // pitch
+    cmdBodyRate_(2) = desiredRate[2]; // yaw
+    cmdBodyRate_(3) = desiredRate[3]; // thrust
+  }
+  else if(tuneAtt){
+    ROS_INFO_ONCE("tuning att");
+    nh_.getParam("/geometric_controller/desiredAtt", desiredAtt);
+    nh_.param<double>("/geometric_controller/attctrl_tau_", attctrl_tau_,0.2);
+    ROS_INFO_THROTTLE(3,"attctrl_tau_=%f desiredAtt: x=%f, y=%f, z=%f", attctrl_tau_, desiredAtt[0], desiredAtt[1], desiredAtt[2]);
+    
+    a_ref(0) = desiredAtt[0];
+    a_ref(1) = desiredAtt[1];
+    a_ref(2) = desiredAtt[2]; 
+        
+    a_des = a_ref - g_;
+    q_des = acc2quaternion(a_des, mavYaw_);
+    
+    cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
 
-  errorPos_ = mavPos_ - targetPos_;
-  errorVel_ = mavVel_ - targetVel_;
-  a_ref = targetAcc_;
+  }
+  else{
+    Eigen::Vector3d errorPos_, errorVel_;
+    Eigen::Matrix3d R_ref;
 
-  /// Compute BodyRate commands using differential flatness
-  /// Controller based on Faessler 2017
-  q_ref = acc2quaternion(a_ref - g_, mavYaw_);
-  R_ref = quat2RotMatrix(q_ref);
-  a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_; //feedforward term for trajectory error
-  if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;
-  a_rd = R_ref * D_.asDiagonal() * R_ref.transpose() * targetVel_; //Rotor drag
-  a_des = a_fb + a_ref - a_rd - g_;
-  q_des = acc2quaternion(a_des, mavYaw_);
+    errorPos_ = mavPos_ - targetPos_;
+    errorVel_ = mavVel_ - targetVel_;
+    a_ref = targetAcc_;
 
-  // std::cout<<"pos:"<<std::endl;
-  // std::cout<<errorPos_[2]<<std::endl;
-  // std::cout<<"vel:"<<std::endl;
-  // std::cout<<errorVel_<<std::endl;
-  // std::cout<<"acc:"<<std::endl;
-  // std::cout<<a_ref<<std::endl;  
+    /// Compute BodyRate commands using differential flatness
+    /// Controller based on Faessler 2017
+    q_ref = acc2quaternion(a_ref - g_, mavYaw_);
+    R_ref = quat2RotMatrix(q_ref);
+    a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_; //feedforward term for trajectory error
+    if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;
+    a_rd = R_ref * D_.asDiagonal() * R_ref.transpose() * targetVel_; //Rotor drag
+    a_des = a_fb + a_ref - a_rd - g_;
+    q_des = acc2quaternion(a_des, mavYaw_);
+
+    // std::cout<<"pos:"<<std::endl;
+    // std::cout<<errorPos_[2]<<std::endl;
+    // std::cout<<"vel:"<<std::endl;
+    // std::cout<<errorVel_<<std::endl;
+    // std::cout<<"acc:"<<std::endl;
+    // std::cout<<a_ref<<std::endl;  
   
-  cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
+    cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
+  }
+
 }
 
 Eigen::Vector4d geometricCtrl::quatMultiplication(Eigen::Vector4d &q, Eigen::Vector4d &p) {
