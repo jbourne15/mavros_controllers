@@ -13,7 +13,7 @@ trajectoryPublisher::trajectoryPublisher(const ros::NodeHandle& nh, const ros::N
 
   trajectoryPub_ = nh_.advertise<nav_msgs::Path>("reference/trajectory", 1);
   referencePub_ = nh_.advertise<geometry_msgs::TwistStamped>("reference/setpoint", 1);
-  markers_pub = nh_.advertise<visualization_msgs::MarkerArray>("/trajectory", 1);
+  markers_pub = nh_.advertise<visualization_msgs::MarkerArray>("trajectory", 1);
   
   trajloop_timer_ = nh_.createTimer(ros::Duration(1), &trajectoryPublisher::loopCallback, this);
   refloop_timer_ = nh_.createTimer(ros::Duration(0.01), &trajectoryPublisher::refCallback, this);
@@ -86,72 +86,41 @@ void trajectoryPublisher::getPolyTrajectory(void){
   start.makeStartOrEnd(Eigen::Vector3d(0,0,2), derivative_to_optimize);
   vertices.push_back(start);
 
-  // middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(0,5,1));
-  // vertices.push_back(middle);
 
-  // middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(0,0,1));
-  // vertices.push_back(middle);
-
-  // middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(0,5,1));
-  // vertices.push_back(middle);
-  
-  // middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(0,0,1));
-  // vertices.push_back(middle);
-
-
-  // middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(0,2,2));
-  // // middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,0));
-  // // middle.addConstraint(mav_trajectory_generation::derivative_order::ORIENTATION, 10*M_PI/180.0);
-  // vertices.push_back(middle);
-
-  
-  
-
-  middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(2,2,3));
+  middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(2,10,6));
   // middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,0));
   // middle.addConstraint(mav_trajectory_generation::derivative_order::ORIENTATION, 10*M_PI/180.0);
   vertices.push_back(middle);
 
   
-  middle3.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-2,2,1));
+  middle3.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-10,2,6));
   vertices.push_back(middle3);
 
 
-  middle4.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(2,-2,3));
+  middle4.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(2,10,2));
   vertices.push_back(middle4);
 
   
-
-  // middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,-.5));
-  // vertices.push_back(middle);
-
-  // middle.addConstraint(mav_trajectory_generation::derivative_order::ORIENTATION, Eigen::Vector4d(0,0,.5,1));
-  // vertices.push_back(middle);
-
-  // middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(0,0,2));
-  // vertices.push_back(middle);
-
-  // middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,.5));
-  // vertices.push_back(middle);
-
-  // middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-5,-5,5)); // causes underground travel look into on github: Checking Half-Space Feasibility
-  // vertices.push_back(middle);
-
   end.makeStartOrEnd(Eigen::Vector3d(0,0,2), derivative_to_optimize);
   vertices.push_back(end);
 
   // 3. compute the segment times
   // std::vector<double> segment_times(vertices.size()-1,50);
   std::vector<double> segment_times;
-  const double v_max = 4.0;
-  const double a_max = 2.5;
-  const double j_max = 1000.0;
+  // double v_max = 10;//6.0;
+  // double v_max = 4;
+  double v_max = 4;
+  const double a_max = 4;//10;
+  double j_max=9*(counter%2)+1;//10;//10*(counter%2)+1;
+
+  counter++;
+  std::cout<<"j_max: "<<j_max<<std::endl;
+  std::cout<<"v_max: "<<v_max<<std::endl;
 
   // input_constraints.addConstraint(ICT::kFMax, 1.5 * 9.81); // maximum acceleration in [m/s/s].
   // input_constraints.addConstraint(ICT::kVMax, 5.5); // maximum velocity in [m/s].
   
-  segment_times = mav_trajectory_generation::estimateSegmentTimes(vertices, v_max, a_max);
-
+  segment_times = mav_trajectory_generation::estimateSegmentTimes(vertices, v_max*.5, a_max*.5);
   
   // // 4. Create an optimizer object and solve. The template parameter (N) denotes the number of coefficients of the underlying polynomial,
   // //    which has to be even. If we want the trajectories to be snap-continuous, N needs to be at least 10; for minimizing jerk, 8.
@@ -174,19 +143,22 @@ void trajectoryPublisher::getPolyTrajectory(void){
 
   // 2. Set the parameters for nonlinear optimization. Below is an example, but the default parameters should be reasonable enough to use without fine-tuning.
   // mav_trajectory_generation::NonlinearOptimizationParameters parameters;
-  parameters.max_iterations = 2000;
+  parameters.max_iterations = 1000;
   parameters.f_rel = 0.05;
   parameters.x_rel = 0.1;
-  parameters.time_penalty = 500.0;
+  parameters.time_penalty = 500;//1750*(counter%2)+250;//500.0;
   parameters.initial_stepsize_rel = 0.1;
   parameters.inequality_constraint_tolerance = 0.01;
+
+  std::cout<<"time_penalty: "<<parameters.time_penalty<<std::endl;
   // parameters.time_alloc_method =
     // mav_trajectory_generation::NonlinearOptimizationParameters::kSquaredTime;
   // parameters.time_alloc_method =
       // mav_trajectory_generation::NonlinearOptimizationParameters::kSquaredTimeAndConstraints;
+  
   // parameters.time_alloc_method =
     // mav_trajectory_generation::NonlinearOptimizationParameters::kRichterTimeAndConstraints;
-
+  
   parameters.algorithm = nlopt::LD_LBFGS;
   parameters.time_alloc_method =
     mav_trajectory_generation::NonlinearOptimizationParameters::kMellingerOuterLoop;
@@ -305,7 +277,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
   input_constraints.addConstraint(ICT::kFMin, 0.0 * 9.81); // minimum acceleration in [m/s/s].
   input_constraints.addConstraint(ICT::kFMax, a_max+9.81); // maximum acceleration in [m/s/s].
   input_constraints.addConstraint(ICT::kVMax, v_max); // maximum velocity in [m/s].
-  input_constraints.addConstraint(ICT::kOmegaXYMax, M_PI / 2.0); // maximum roll/pitch rates in [rad/s].
+  input_constraints.addConstraint(ICT::kOmegaXYMax, .35*M_PI / 2.0); // maximum roll/pitch rates in [rad/s].
   // input_constraints.addConstraint(ICT::kOmegaZMax, M_PI / 2.0); // maximum yaw rates in [rad/s].
   // input_constraints.addConstraint(ICT::kOmegaZDotMax, M_PI); // maximum yaw acceleration in [rad/s/s].
 

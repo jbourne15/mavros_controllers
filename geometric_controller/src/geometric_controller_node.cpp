@@ -16,9 +16,11 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
   mode=10000;
 
+  nh_.param<int>("geometric_controller/agent_number", AGENT_NUMBER, 1);
+  
   /// Target State is the reference state received from the trajectory
   /// goalState is the goal the controller is trying to reach
-  goalPos_ << 0.0, 0.0, 1.5; //Initial Position
+  goalPos_ << 2*(AGENT_NUMBER-1), 0.0, 1.5; //Initial Position
   targetPos_ = goalPos_;
   targetVel_ << 0.0, 0.0, 0.0;
   mavYaw_ = 0.0;
@@ -35,16 +37,15 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   agentName.erase(0,1);
   newVelData=false;
 
-  nh_.param<string>("/geometric_controller/mavname", mav_name_, "iris");
-  nh_.param<int>("/geometric_controller/ctrl_mode", ctrl_mode_, MODE_BODYRATE);
-  nh_.param<bool>("/geometric_controller/enable_sim", sim_enable_, true);
-  nh_.param<bool>("/geometric_controller/tuneRate", tuneRate, false);
-  nh_.param<bool>("/geometric_controller/tuneAtt", tuneAtt, false);
-  nh_.getParam("/geometric_controller/desiredRate", desiredRate);
-  nh_.getParam("/geometric_controller/desiredAtt", desiredAtt);
-  nh_.param<double>("/geometric_controller/attctrl_tau_", attctrl_tau_,0.2);
+  nh_.param<string>("geometric_controller/mav_name", mav_name_, "iris");
+  nh_.param<int>("geometric_controller/ctrl_mode", ctrl_mode_, MODE_BODYRATE);
+  nh_.param<bool>("geometric_controller/enable_sim", sim_enable_, true);
+  nh_.param<bool>("geometric_controller/tuneRate", tuneRate, false);
+  nh_.param<bool>("geometric_controller/tuneAtt", tuneAtt, false); 
+  nh_.getParam("geometric_controller/desiredRate", desiredRate);
+  nh_.getParam("geometric_controller/desiredAtt", desiredAtt);
+  nh_.param<double>("geometric_controller/attctrl_tau_", attctrl_tau_,0.2);
 
-	    
   rcSub_ = nh_.subscribe(agentName+"/mavros/rc/in",1,&geometricCtrl::rc_command_callback,this,ros::TransportHints().tcpNoDelay());
   referenceSub_=nh_.subscribe(agentName+"/reference/setpoint",1, &geometricCtrl::targetCallback,this,ros::TransportHints().tcpNoDelay());
   flatreferenceSub_ = nh_.subscribe(agentName+"/reference/flatsetpoint", 1, &geometricCtrl::flattargetCallback, this, ros::TransportHints().tcpNoDelay());
@@ -56,6 +57,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   else{  
     mavposeSub_ = nh_.subscribe(agentName+"/local_position", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
   }
+
   mavtwistSub_ = nh_.subscribe(agentName+"/mavros/local_position/velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
    // mavtwistSub_ = nh_.subscribe(agentName+"/local_velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
   
