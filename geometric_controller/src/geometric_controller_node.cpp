@@ -44,7 +44,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<bool>("geometric_controller/tuneAtt", tuneAtt, false); 
   nh_.getParam("geometric_controller/desiredRate", desiredRate);
   nh_.getParam("geometric_controller/desiredAtt", desiredAtt);
-  nh_.param<double>("geometric_controller/attctrl_tau_", attctrl_tau_,0.2);
+  nh_.param<double>("geometric_controller/attctrl_tau_", attctrl_tau_,0.3);
 
   rcSub_ = nh_.subscribe(agentName+"/mavros/rc/in",1,&geometricCtrl::rc_command_callback,this,ros::TransportHints().tcpNoDelay());
   referenceSub_=nh_.subscribe(agentName+"/reference/setpoint",1, &geometricCtrl::targetCallback,this,ros::TransportHints().tcpNoDelay());
@@ -56,6 +56,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   }
   else{  
     mavposeSub_ = nh_.subscribe(agentName+"/local_position", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
+    // mavposeSub_ = nh_.subscribe(agentName+"/mavros/local_position/pose", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
   }
 
   mavtwistSub_ = nh_.subscribe(agentName+"/mavros/local_position/velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
@@ -68,6 +69,11 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
   angularVelPub_ = nh_.advertise<mavros_msgs::AttitudeTarget>(agentName+"/command/bodyrate_command", 1);
   referencePosePub_ = nh_.advertise<geometry_msgs::PoseStamped>(agentName+"/reference/pose", 1);
+
+  // if (tuneAtt){
+  des_eulerRefPub_ = nh_.advertise<geometry_msgs::Vector3Stamped>(agentName+"/desEuler",1);
+  cur_eulerRefPub_ = nh_.advertise<geometry_msgs::Vector3Stamped>(agentName+"/curEuler",1);
+  // }
 
   arming_client_ = nh_.serviceClient<mavros_msgs::CommandBool>(agentName+"/mavros/cmd/arming");
   set_mode_client_ = nh_.serviceClient<mavros_msgs::SetMode>(agentName+"/mavros/set_mode");
@@ -311,7 +317,30 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
         
     a_des = a_ref - g_;
     q_des = acc2quaternion(a_des, mavYaw_);
-    
+
+    // convert to current and desired euler rpy and publish both
+    tf::Quaternion qd(q_des(1), q_des(2), q_des(3), q_des(0));      
+    tf::Matrix3x3 md(qd);
+    double rollD, pitchD, yawD;
+    md.getRPY(rollD, pitchD, yawD);
+
+    tf::Quaternion qc(mavAtt_(1), mavAtt_(2), mavAtt_(3), mavAtt_(0));
+    tf::Matrix3x3 mc(qc);
+    double rollC, pitchC, yawC;
+    mc.getRPY(rollC, pitchC, yawC);
+
+    des_eulerRefMsg_.header.stamp = ros::Time::now();
+    des_eulerRefMsg_.vector.x = rollD*180.0/M_PI; 
+    des_eulerRefMsg_.vector.y = pitchD*180.0/M_PI;
+    des_eulerRefMsg_.vector.z = yawD*180.0/M_PI;
+    des_eulerRefPub_.publish(des_eulerRefMsg_);
+
+    cur_eulerRefMsg_.header.stamp=ros::Time::now();
+    cur_eulerRefMsg_.vector.x=rollC*180.0/M_PI;
+    cur_eulerRefMsg_.vector.y=pitchC*180.0/M_PI;
+    cur_eulerRefMsg_.vector.z=yawC*180.0/M_PI;
+    cur_eulerRefPub_.publish(cur_eulerRefMsg_);
+        
     cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
 
   }
@@ -332,6 +361,31 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     a_rd = R_ref * D_.asDiagonal() * R_ref.transpose() * targetVel_; //Rotor drag
     a_des = a_fb + a_ref - a_rd - g_;
     q_des = acc2quaternion(a_des, mavYaw_);
+
+
+    // convert to current and desired euler rpy and publish both
+    tf::Quaternion qd(q_des(1), q_des(2), q_des(3), q_des(0));      
+    tf::Matrix3x3 md(qd);
+    double rollD, pitchD, yawD;
+    md.getRPY(rollD, pitchD, yawD);
+
+    tf::Quaternion qc(mavAtt_(1), mavAtt_(2), mavAtt_(3), mavAtt_(0));
+    tf::Matrix3x3 mc(qc);
+    double rollC, pitchC, yawC;
+    mc.getRPY(rollC, pitchC, yawC);
+
+    des_eulerRefMsg_.header.stamp = ros::Time::now();
+    des_eulerRefMsg_.vector.x = rollD*180.0/M_PI; 
+    des_eulerRefMsg_.vector.y = pitchD*180.0/M_PI;
+    des_eulerRefMsg_.vector.z = yawD*180.0/M_PI;
+    des_eulerRefPub_.publish(des_eulerRefMsg_);
+
+    cur_eulerRefMsg_.header.stamp=ros::Time::now();
+    cur_eulerRefMsg_.vector.x=rollC*180.0/M_PI;
+    cur_eulerRefMsg_.vector.y=pitchC*180.0/M_PI;
+    cur_eulerRefMsg_.vector.z=yawC*180.0/M_PI;
+    cur_eulerRefPub_.publish(cur_eulerRefMsg_);
+
 
     // std::cout<<"pos:"<<std::endl;
     // std::cout<<errorPos_[2]<<std::endl;

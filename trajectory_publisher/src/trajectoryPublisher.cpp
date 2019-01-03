@@ -79,7 +79,17 @@ void trajectoryPublisher::setTrajectory(int ID) {
 }
 
 void trajectoryPublisher::getPolyTrajectory(void){
+
   ros::Time stime = ros::Time::now();
+  /*
+  Eigen::Vector3d center(0,0,2);
+  // createSquareVertices(int maximum_derivative,
+  //                                   const Eigen::Vector3d& center,
+  //                                   double side_length, int rounds)
+  mav_trajectory_generation::Vertex::Vector vertices = mav_trajectory_generation::createSquareVertices(derivative_to_optimize,center,5,10);
+  */
+  
+  
   mav_trajectory_generation::Vertex::Vector vertices;
   mav_trajectory_generation::Vertex start(dimension), middle(dimension), middle2(dimension), middle3(dimension), middle4(dimension), end(dimension);
   // 2. Add constraints to the vertices
@@ -87,22 +97,23 @@ void trajectoryPublisher::getPolyTrajectory(void){
   vertices.push_back(start);
 
 
-  middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(2,10,6));
+  middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(0,10,2));
   // middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,0));
   // middle.addConstraint(mav_trajectory_generation::derivative_order::ORIENTATION, 10*M_PI/180.0);
   vertices.push_back(middle);
 
   
-  middle3.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-10,2,6));
+  middle3.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(0,-10,2));
   vertices.push_back(middle3);
 
 
-  middle4.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(2,10,2));
+  middle4.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(0,10,2));
   vertices.push_back(middle4);
 
   
   end.makeStartOrEnd(Eigen::Vector3d(0,0,2), derivative_to_optimize);
   vertices.push_back(end);
+
 
   // 3. compute the segment times
   // std::vector<double> segment_times(vertices.size()-1,50);
