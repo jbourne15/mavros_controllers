@@ -81,92 +81,117 @@ void trajectoryPublisher::setTrajectory(int ID) {
 void trajectoryPublisher::getPolyTrajectory(void){
   ros::Time stime = ros::Time::now();
   mav_trajectory_generation::Vertex::Vector vertices;
-  mav_trajectory_generation::Vertex start(dimension), middle(dimension), middle2(dimension), middle3(dimension), middle4(dimension), end(dimension);
-  // 2. Add constraints to the vertices
-  start.makeStartOrEnd(Eigen::Vector3d(0,0,2), derivative_to_optimize);
+  mav_trajectory_generation::Vertex start(dimension), middle(dimension), middle2(dimension), middle3(dimension), middle4(dimension), middle5(dimension), end(dimension);
+
+  // start.makeStartOrEnd(Eigen::Vector3d(0,0,2), derivative_to_optimize);
+
+   // type: position  value: [14.55, 67.83, 2.262]
+   // type: velocity  value: [ 0.2373,    2.01, 0.01177]
+   // type: acceleration  value: [  0.01577,  -0.02794, 5.613e-05]
+   // type: jerk  value: [0.0006395, -0.009707, -3.51e-05]
+   // type: snap  value: [ 7.009e-05,  3.405e-06, -2.599e-07]
+
+  start.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(14.55, 67.83, 2.262));
+  start.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0.2373,    2.01, 0.01177));
+  start.addConstraint(mav_trajectory_generation::derivative_order::ACCELERATION, Eigen::Vector3d(0.01577,  -0.02794, 5.613e-05));
+  start.addConstraint(mav_trajectory_generation::derivative_order::JERK, Eigen::Vector3d(0.0006395, -0.009707, -3.51e-05));
+  start.addConstraint(mav_trajectory_generation::derivative_order::SNAP, Eigen::Vector3d(7.009e-05,  3.405e-06, -2.599e-07));
+ 
   vertices.push_back(start);
-
-
-  middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(2,10,6));
-  // middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,0));
-  // middle.addConstraint(mav_trajectory_generation::derivative_order::ORIENTATION, 10*M_PI/180.0);
+   
+  // constraints: 
+  // type: position  value: [43.87, 4.859, 1.889]
+  middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(43.87, 4.859, 1.889));
   vertices.push_back(middle);
 
-  
-  middle3.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-10,2,6));
+  // constraints: 
+  // type: position  value: [16.72, 66.54, 1.914]
+  middle2.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(16.72, 66.54, 1.914));
+  vertices.push_back(middle2);
+
+  // constraints: 
+  // type: position  value: [25.03, 94.59, 1.969]
+  middle3.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(25.03, 94.59, 1.969));
   vertices.push_back(middle3);
 
-
-  middle4.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(2,10,2));
+   // constraints: 
+   // type: position  value: [6.449, 78.12, 1.995]
+  middle4.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(6.449, 78.12, 1.995));
   vertices.push_back(middle4);
 
+   // constraints: 
+   // type: position  value: [43.32, 81.49, 2.144]
+  middle5.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(43.32, 81.49, 2.144));
+  vertices.push_back(middle5);
+
   
-  end.makeStartOrEnd(Eigen::Vector3d(0,0,2), derivative_to_optimize);
-  vertices.push_back(end);
+  
+  // end.makeStartOrEnd(Eigen::Vector3d(0,0,2), derivative_to_optimize);
+  // vertices.push_back(end);
 
   // 3. compute the segment times
   // std::vector<double> segment_times(vertices.size()-1,50);
   std::vector<double> segment_times;
   // double v_max = 10;//6.0;
   // double v_max = 4;
-  double v_max = 4;
-  const double a_max = 4;//10;
-  double j_max=9*(counter%2)+1;//10;//10*(counter%2)+1;
+  double v_max = 3;
+  const double a_max = 10;//10;
+  // double j_max=9*(counter%2)+1;//10;//10*(counter%2)+1;
+  double j_max=10;
 
   counter++;
-  std::cout<<"j_max: "<<j_max<<std::endl;
   std::cout<<"v_max: "<<v_max<<std::endl;
+  std::cout<<"a_max: "<<a_max<<std::endl;
+  std::cout<<"j_max: "<<j_max<<std::endl;
 
   // input_constraints.addConstraint(ICT::kFMax, 1.5 * 9.81); // maximum acceleration in [m/s/s].
   // input_constraints.addConstraint(ICT::kVMax, 5.5); // maximum velocity in [m/s].
+
+  double timeMultiplier=1;
+  // segment_times = mav_trajectory_generation::estimateSegmentTimes(vertices, v_max*.5, a_max*.5);
+  segment_times = mav_trajectory_generation::estimateSegmentTimesNfabian(vertices, v_max*timeMultiplier, a_max*timeMultiplier);
   
-  segment_times = mav_trajectory_generation::estimateSegmentTimes(vertices, v_max*.5, a_max*.5);
-  
-  // // 4. Create an optimizer object and solve. The template parameter (N) denotes the number of coefficients of the underlying polynomial,
-  // //    which has to be even. If we want the trajectories to be snap-continuous, N needs to be at least 10; for minimizing jerk, 8.
-  // const int Nlin = 10;
-  // mav_trajectory_generation::PolynomialOptimization<Nlin> linOpt(dimension);
-  // linOpt.setupFromVertices(vertices, segment_times, derivative_to_optimize);
-  // linOpt.solveLinear();
-
-  // // 5. Obtain the polynomial segments.
-  // mav_trajectory_generation::Segment::Vector segments;
-  // linOpt.getSegments(&segments);
-
-
-  // std::cout<<segments<<std::endl;
-
 
   //--- Nonlinear Optimization ---//
 
   // 1. Set up the problem by following Steps 1-3 in the Linear Optimization section.
 
   // 2. Set the parameters for nonlinear optimization. Below is an example, but the default parameters should be reasonable enough to use without fine-tuning.
-  // mav_trajectory_generation::NonlinearOptimizationParameters parameters;
-  parameters.max_iterations = 1000;
-  parameters.f_rel = 0.05;
-  parameters.x_rel = 0.1;
-  parameters.time_penalty = 500;//1750*(counter%2)+250;//500.0;
-  parameters.initial_stepsize_rel = 0.1;
-  parameters.inequality_constraint_tolerance = 0.01;
+  
+  mav_trajectory_generation::NonlinearOptimizationParameters parameters;
+  
+  // parameters.max_iterations = 1000;
+  // parameters.f_rel = 0.05;
+  // parameters.x_rel = 0.1;
+  // parameters.time_penalty = 500;//1750*(counter%2)+250;//500.0;
+  // parameters.initial_stepsize_rel = 0.1;
+  // parameters.inequality_constraint_tolerance = 0.01;
 
-  std::cout<<"time_penalty: "<<parameters.time_penalty<<std::endl;
-  // parameters.time_alloc_method =
-    // mav_trajectory_generation::NonlinearOptimizationParameters::kSquaredTime;
-  // parameters.time_alloc_method =
-      // mav_trajectory_generation::NonlinearOptimizationParameters::kSquaredTimeAndConstraints;
+  parameters.max_iterations = 3000;
+  parameters.f_rel = 1.0e-6;
+  // parameter.f_rel = 0.01;
+  // parameter.x_rel = 0.01;
+  parameters.time_penalty = 0.00000001;
+  parameters.initial_stepsize_rel = .1;//-1;
+
+  parameters.inequality_constraint_tolerance = .01;
+  // parameter.soft_constraint_weight = 100;
+  parameters.soft_constraint_weight = .1; // timeH sensitive!!
+  // parameters.use_soft_constraints = false;
   
-  // parameters.time_alloc_method =
-    // mav_trajectory_generation::NonlinearOptimizationParameters::kRichterTimeAndConstraints;
-  
-  parameters.algorithm = nlopt::LD_LBFGS;
   parameters.time_alloc_method =
-    mav_trajectory_generation::NonlinearOptimizationParameters::kMellingerOuterLoop;
+    mav_trajectory_generation::NonlinearOptimizationParameters::kRichterTimeAndConstraints;
+  
+  // parameters.algorithm = nlopt::LD_LBFGS;
+  // parameters.time_alloc_method =
+    // mav_trajectory_generation::NonlinearOptimizationParameters::kMellingerOuterLoop;
   
   // 3. Create an optimizer object and solve. The third argument of the optimization object (true/false) specifies whether the optimization is run over the segment times only.
 
+  std::cout<<"leoo"<<std::endl;
+
   const int Nnl = 10;
-  mav_trajectory_generation::PolynomialOptimizationNonLinear<Nnl> nlOpt(this->dimension, this->parameters);
+  mav_trajectory_generation::PolynomialOptimizationNonLinear<Nnl> nlOpt(this->dimension, parameters);
   // mav_trajectory_generation::PolynomialOptimizationNonLinear<Nnl> nlOpt(dimension, parameters, false);
   nlOpt.setupFromVertices(vertices, segment_times, derivative_to_optimize);
   nlOpt.addMaximumMagnitudeConstraint(mav_trajectory_generation::derivative_order::VELOCITY, v_max);
@@ -174,6 +199,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
   nlOpt.addMaximumMagnitudeConstraint(mav_trajectory_generation::derivative_order::JERK, j_max);
   nlOpt.optimize();
 
+  std::cout<< nlOpt.getOptimizationInfo() <<std::endl;
 
   // 4. Obtain the polynomial segments.
 
@@ -244,7 +270,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
   //--- Visualizing Trajectories ---//
 
   //For a simple visualization:
-  double distance = .25; // Distance by which to seperate additional markers. Set 0.0 to disable.
+  double distance = 2.0; // Distance by which to seperate additional markers. Set 0.0 to disable.
   std::string frame_id = "world";
 
   // visualization_msgs::MarkerArray markers;
