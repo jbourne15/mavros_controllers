@@ -79,7 +79,17 @@ void trajectoryPublisher::setTrajectory(int ID) {
 }
 
 void trajectoryPublisher::getPolyTrajectory(void){
+
   ros::Time stime = ros::Time::now();
+  /*
+  Eigen::Vector3d center(0,0,2);
+  // createSquareVertices(int maximum_derivative,
+  //                                   const Eigen::Vector3d& center,
+  //                                   double side_length, int rounds)
+  mav_trajectory_generation::Vertex::Vector vertices = mav_trajectory_generation::createSquareVertices(derivative_to_optimize,center,5,10);
+  */
+  
+  
   mav_trajectory_generation::Vertex::Vector vertices;
   mav_trajectory_generation::Vertex start(dimension), middle(dimension), middle2(dimension), middle3(dimension), middle4(dimension), middle5(dimension), end(dimension);
 
@@ -128,6 +138,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
   
   // end.makeStartOrEnd(Eigen::Vector3d(0,0,2), derivative_to_optimize);
   // vertices.push_back(end);
+
 
   // 3. compute the segment times
   // std::vector<double> segment_times(vertices.size()-1,50);
