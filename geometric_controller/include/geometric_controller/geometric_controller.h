@@ -7,6 +7,7 @@
 #include <ros/subscribe_options.h>
 //#include <kindr/Core>
 #include <tf/transform_broadcaster.h>
+#include <tf/transform_datatypes.h>
 #include <dynamic_reconfigure/server.h>
 
 #include <stdio.h>
@@ -20,6 +21,7 @@
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/Vector3Stamped.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
 #include <mavros_msgs/SetMode.h>
@@ -54,6 +56,8 @@ class geometricCtrl
     ros::Subscriber rcSub_;  
     ros::Publisher rotorVelPub_, angularVelPub_;
     ros::Publisher referencePosePub_;
+    ros::Publisher des_eulerRefPub_;
+    ros::Publisher cur_eulerRefPub_;
     ros::ServiceClient arming_client_;
     ros::ServiceClient set_mode_client_;
     ros::ServiceClient frame_client;
@@ -87,6 +91,8 @@ class geometricCtrl
     mavros_msgs::CommandBool arm_cmd_;
     mavros_msgs::AttitudeTarget angularVelMsg_;
     geometry_msgs::PoseStamped referencePoseMsg_;
+    geometry_msgs::Vector3Stamped des_eulerRefMsg_;
+    geometry_msgs::Vector3Stamped cur_eulerRefMsg_;
 
     Eigen::Vector3d goalPos_, targetPos_, targetVel_, targetAcc_, targetJerk_, targetSnap_, targetPos_prev_, targetVel_prev_;
     Eigen::Vector3d mavPos_, mavVel_, mavRate_;
