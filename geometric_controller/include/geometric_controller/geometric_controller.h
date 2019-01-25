@@ -22,6 +22,8 @@
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Vector3Stamped.h>
+#include <geometry_msgs/AccelStamped.h>
+#include <visualization_msgs/Marker.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
 #include <mavros_msgs/SetMode.h>
@@ -33,6 +35,14 @@
 #include <std_srvs/SetBool.h>
 #include <gazebo_msgs/ModelStates.h>
 #include <mavros_msgs/SetMavFrame.h>
+
+#include <rvo2/RVO.h>
+#include <dlib/matrix.h>
+#include <Eigen/Eigen>
+#define STATS_USE_EIGEN
+#include "enif_iuc/AgentMPS.h"
+#include "enif_iuc/AgentWaypointTask.h"
+#include "geodetic_utils/geodetic_conv.hpp"
 
 #define MODE_ROTORTHRUST  1
 #define MODE_BODYRATE     2
@@ -47,7 +57,9 @@ class geometricCtrl
     ros::NodeHandle nh_private_;
     ros::Subscriber odomSub_;
     ros::Subscriber referenceSub_;
+    ros::Subscriber accelReferenceSub_;
     ros::Subscriber flatreferenceSub_;
+    ros::Subscriber agentSub_;
 
     ros::Subscriber keybrdSub_;
     ros::Subscriber mavstateSub_;
@@ -58,6 +70,10 @@ class geometricCtrl
     ros::Publisher referencePosePub_;
     ros::Publisher des_eulerRefPub_;
     ros::Publisher cur_eulerRefPub_;
+    ros::Publisher mavPosVelPub_;
+    ros::Publisher mavAccelPub_;
+    ros::Publisher bPub_;
+    std::vector<ros::Publisher> agentPos_pub, agentVel_pub;
     ros::ServiceClient arming_client_;
     ros::ServiceClient set_mode_client_;
     ros::ServiceClient frame_client;
@@ -65,10 +81,12 @@ class geometricCtrl
     ros::Timer cmdloop_timer_, statusloop_timer_;
     ros::Time last_request_, reference_request_now_, reference_request_last_;
 
-    int mode;
+    int mode, tpvh;
     int AGENT_NUMBER;
     std::vector<double> desiredRate, desiredAtt;
-    bool tuneRate, tuneAtt;
+    std::vector<ros::Time> agentInfo_time;
+    bool tuneRate, tuneAtt, avoiding, timeFlag;
+    ros::Time finishedAvoid_time;
     mavros_msgs::RCIn  RCin;
     int num_rotors_;
     string mav_name_;
@@ -83,8 +101,11 @@ class geometricCtrl
     double attctrl_tau_;
     double norm_thrust_const_;
     double max_fb_acc_;
-    bool newVelData;
+    float radius;
     mavros_msgs::SetMavFrame mav_frame;
+    std::vector<bool> newPosData, newVelData;
+    bool newRefData, avoidAgents, newDataFlag;
+    int numAgents;
 
     mavros_msgs::State current_state_;
     mavros_msgs::SetMode offb_set_mode_;
@@ -93,14 +114,19 @@ class geometricCtrl
     geometry_msgs::PoseStamped referencePoseMsg_;
     geometry_msgs::Vector3Stamped des_eulerRefMsg_;
     geometry_msgs::Vector3Stamped cur_eulerRefMsg_;
+    geometry_msgs::AccelStamped accel_CA;
 
-    Eigen::Vector3d goalPos_, targetPos_, targetVel_, targetAcc_, targetJerk_, targetSnap_, targetPos_prev_, targetVel_prev_;
+    std::vector<Eigen::Vector3d> targetPos_history, targetVel_history;
+    
+    Eigen::Vector3d goalPos_, targetPos_, targetVel_, targetAcc_, targetJerk_, targetSnap_, targetPos_prev_, targetVel_prev_, targetCA_vel, targetCA_pos, targetPos_noCA, targetVel_noCA, targetAcc_noCA, targetPos_noCA_prev_, targetVel_noCA_prev_;
     Eigen::Vector3d mavPos_, mavVel_, mavRate_;
     double mavYaw_;
     Eigen::Vector3d a_des, a_fb, a_ref, a_rd, g_;
     Eigen::Vector4d mavAtt_, q_ref, q_des;
     Eigen::Vector4d cmdBodyRate_; //{wx, wy, wz, Thrust}
-    Eigen::Vector3d Kpos_, Kvel_, D_;
+    Eigen::Vector3d Kpos_, Kvel_, D_, Kpos_noCA_;
+
+    RVO::RVOSimulator* sim;
 
     void pubMotorCommands();
     void pubRateCommands();
@@ -108,6 +134,7 @@ class geometricCtrl
     void odomCallback(const nav_msgs::OdometryConstPtr& odomMsg);
     void rc_command_callback(const mavros_msgs::RCIn::ConstPtr &new_message);
     void targetCallback(const geometry_msgs::TwistStamped& msg);
+    void targetAccelCallback(const geometry_msgs::AccelStamped& msg);
     void flattargetCallback(const controller_msgs::FlatTarget& msg);
     void keyboardCallback(const geometry_msgs::Twist& msg);
     void cmdloopCallback(const ros::TimerEvent& event);
@@ -117,12 +144,25 @@ class geometricCtrl
     void gzmavposeCallback(const gazebo_msgs::ModelStates& msg);
     void statusloopCallback(const ros::TimerEvent& event);
     bool ctrltriggerCallback(std_srvs::SetBool::Request &req, std_srvs::SetBool::Response &res);
+    void agentsCallback(const enif_iuc::AgentMPS &msg);
+    void wait4Home(void);
+    void setupScenario(void);
+    void updateAgents(void);
+    void updateGoal(void);
+    void updateCA_velpos(void);
+    double b_sigMoid(double x, double c, double a);
+      
     Eigen::Vector4d acc2quaternion(Eigen::Vector3d vector_acc, double yaw);
     Eigen::Vector4d rot2Quaternion(Eigen::Matrix3d R);
     Eigen::Matrix3d quat2RotMatrix(Eigen::Vector4d q);
     geometry_msgs::PoseStamped vector3d2PoseStampedMsg(Eigen::Vector3d &position, Eigen::Vector4d &orientation);
 
   public:
+    geodetic_converter::GeodeticConverter g_geodetic_converter;
+    double H_latitude,H_longitude,H_altitude;
+    dlib::matrix<double> xt, vt;
+    double v_max;    
+    std::vector<RVO::Vector2> goals;
     geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& nh_private);
     void computeBodyRateCmd(bool ctrl_mode);
     Eigen::Vector4d quatMultiplication(Eigen::Vector4d &q, Eigen::Vector4d &p);
