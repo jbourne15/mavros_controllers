@@ -25,21 +25,16 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   targetVel_ << 0.0, 0.0, 0.0;
   mavYaw_ = M_PI/2.0;
   g_ << 0.0, 0.0, -9.8;
-  Kpos_ << -5.0, -5.0, -40.0;
-  Kvel_ << -4.0, -4.0, -5.0;
-  // Kpos_ << -3.0, -3.0, -40.0;
-  // Kvel_ << -2.0, -2.0, -5.0;
+  Kpos_ << -3.0, -3.0, -60.0;
+  Kvel_ << -3.0, -3.0, -60.0;
 
-  
-  // Kpos_      << -2  , -2  , -40.0;
-  // Kpos_      << -0.25  , -.25  , -40.0;
-  // Kpos_noCA_ << 0, 0, -20;//-0.5, -0.5, -20.0; // , -40
-  // Kvel_   << -5.0, -5.0, -6.0;
-  
   // Kpos_ << -5.0, -5.0, -40.0;
+  // Kvel_ << -4.0, -4.0, -5.0;
 
+  
   D_ << 0.0, 0.0, 0.0;
-  attctrl_tau_ = 0.2;
+  // attctrl_tau_ = 0.15; //0.2;
+  attctrl_tau_ << 0.20, 0.20, .2;
   norm_thrust_const_ = .1;
   // max_fb_acc_ = 7.0;
   max_fb_acc_ = 5.0;
@@ -51,12 +46,23 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   targetPos_history.resize(25);
   targetVel_history.resize(25);
 
+  errorVel_history.resize(50);
+  ev_idx=0;
+
+  a_des_history.resize(10);
+  ades_idx=0;
+
+  std::fill(a_des_history.begin(), a_des_history.end(), Eigen::Vector3d(0,0,0));
+
+  std::fill(errorVel_history.begin(), errorVel_history.end(), Eigen::Vector3d(0,0,0));
+
   std::fill(targetPos_history.begin(), targetPos_history.end(), Eigen::Vector3d(0,0,0));
   std::fill(targetVel_history.begin(), targetVel_history.end(), Eigen::Vector3d(0,0,0));
 
   avoiding=false;
   timeFlag=false;
   finishedAvoid_time=ros::Time::now();
+  // avoid_time=ros::Time::now();
 
   tpvh=0;
   
@@ -67,9 +73,10 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<bool>("geometric_controller/tuneAtt", tuneAtt, false); 
   nh_.getParam("geometric_controller/desiredRate", desiredRate);
   nh_.getParam("geometric_controller/desiredAtt", desiredAtt);
-  nh_.param<double>("geometric_controller/attctrl_tau_", attctrl_tau_,0.3);
+  // nh_.param<double>("geometric_controller/attctrl_tau_", attctrl_tau_,0.3);
   nh_.param<int>(agentName+"/pf/agents", numAgents, 4);  
   nh_.param<float>("geometric_controller/radius", radius, 2.5);
+  nh_.param<bool>("geometric_controller/obstaclesOn", obstaclesOn, false);
 
   newRefData=false;
   newDataFlag=false;
@@ -130,6 +137,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   }
   
   bPub_ = nh_.advertise<geometry_msgs::TwistStamped>(agentName+"/b", 1);
+  obstaclesPub_ = nh_.advertise<visualization_msgs::Marker>(agentName+"/obstacles",1);
   
   angularVelPub_ = nh_.advertise<mavros_msgs::AttitudeTarget>(agentName+"/command/bodyrate_command", 1);
   referencePosePub_ = nh_.advertise<geometry_msgs::PoseStamped>(agentName+"/reference/pose", 1);
@@ -176,8 +184,18 @@ void geometricCtrl::updateAgents(void) {
   updateGoal();
   for(int i=0; i<numAgents; i++){
     if (i==(AGENT_NUMBER-1)){
-      // sim->setAgentPrefVelocity(i, targetVel_noCA.norm()*normalize(goals[i] - RVO::Vector2(mavPos_(0), mavPos_(1))));
-      sim->setAgentPrefVelocity(i, RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1)));
+
+      RVO::Vector2 desVel;
+
+      
+      desVel = floor(targetVel_noCA.norm())*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
+      
+      // desVel = 2*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) ;//+ 0.5*RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
+
+      sim->setAgentPrefVelocity(i, desVel);
+      // sim->setAgentPrefVelocity(i, RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1)));      
+      // sim->setAgentPrefVelocity(i, RVO::Vector2(mavVel_(0), mavVel_(1)));
+
       sim->setAgentPosition    (i, RVO::Vector2(mavPos_(0), mavPos_(1)));
       sim->setAgentVelocity    (i, RVO::Vector2(mavVel_(0), mavVel_(1)));
     }
@@ -226,66 +244,78 @@ void geometricCtrl::updateCA_velpos(void){
   // }
   
   Eigen::Vector3d targetPos_CA, targetVel_CA;
-  
-  targetPos_CA << pos.x(), pos.y(), targetPos_noCA(2);
+
   targetVel_CA << vel.x(), vel.y(), targetVel_noCA(2);
+  if (targetVel_CA.norm()>0.05){
+    targetPos_CA << pos.x(), pos.y(), targetPos_noCA(2);
+  }
+  else{
+    //this fixes drift at the end of traj
+    targetPos_CA=targetPos_noCA;
+    targetVel_CA=targetVel_CA*0;
+  }
   
-  double b;// = (targetVel_CA-targetVel_noCA).norm();
-  double bx = fabs(targetVel_CA(0)-targetVel_noCA(0));
-  double by = fabs(targetVel_CA(1)-targetVel_noCA(1));
-
-  double comp = 0.01*AGENT_NUMBER;
   
-  // if (b>.005){ // avoid
-  if (bx>comp || by>comp){ // avoid
-    b=1;
-    targetPos_ = targetPos_CA;
-    targetVel_ = targetVel_CA;    
-    avoiding=true;
-    timeFlag=false;
+  // double b;// = (targetVel_CA-targetVel_noCA).norm();
+  // double bx = fabs(targetVel_CA(0)-targetVel_noCA(0));
+  // double by = fabs(targetVel_CA(1)-targetVel_noCA(1));
 
-    // if (!runAwayAgent.empty()){
-    //   for (int i=0; i<runAwayAgent.size(); i++){	
-    // 	if (runAwayAgent[i]>AGENT_NUMBER){
-    // 	  targetVel_ = targetVel_*(AGENT_NUMBER*0.1);
-    // 	}
-    //   }
-    // }
+  // double comp = 0.01*AGENT_NUMBER;
+  
+  // // if (b>.005){ // avoid
+  // if (bx>comp || by>comp){ // avoid if any difference in traj
+  //   b=1;
+  //   targetPos_ = targetPos_CA;
+  //   targetVel_ = targetVel_CA;    
+  //   avoiding=true;
+  //   timeFlag=false;
+
+  //   // if (!runAwayAgent.empty()){
+  //   //   for (int i=0; i<runAwayAgent.size(); i++){	
+  //   // 	if (runAwayAgent[i]>AGENT_NUMBER){
+  //   // 	  targetVel_ = targetVel_*(AGENT_NUMBER*0.1f);
+  //   // 	}
+  //   //   }
+  //   // }
     
+  //   // avoid_time=ros::Time::now();
     
-  }
-  // else if(b<.005 && avoiding){
-  else if((bx<comp || by<comp) && avoiding){
-    //if i was avoiding and about to stop avoiding
+  // }
+  // // else if(b<.005 && avoiding){
+  // else if((bx<comp && by<comp) && avoiding){ // consider stop avoiding when both xy traj are similar to original
+  //   //if i was avoiding and about to stop avoiding
     
-    if(!timeFlag){//if i havent' started timing
-      finishedAvoid_time=ros::Time::now(); // start timeing
-      timeFlag=true;
-    }
+  //   if(!timeFlag){//if i havent' started timing
+  //     finishedAvoid_time=ros::Time::now(); // start timeing
+  //     timeFlag=true;
+  //   }
     
-    if((ros::Time::now()-finishedAvoid_time).toSec()>2){
-      // make sure to wait for three seconds until i follow original pos traj
-      avoiding=false;
-      targetPos_ = targetPos_noCA;
-      targetVel_ = targetVel_noCA;
-      b=0;
-      timeFlag=false;
-    }
-    else{ // continue to avoid 
-      targetPos_ = targetPos_CA;
-      targetVel_ = targetVel_CA;
-      b=0.5;
-    }
-  }
-  else{ // no need to avoid
-    b=0;
-    targetPos_ = targetPos_noCA;
-    targetVel_ = targetVel_noCA;
-    avoiding=false;
-    timeFlag=false;
-  }
+  //   if((ros::Time::now()-finishedAvoid_time).toSec()>2 && mavVel_.norm()>0.25){
+  //     // make sure to wait for three seconds until i follow original pos traj
+  //     avoiding=false;
+  //     targetPos_ = targetPos_noCA;
+  //     targetVel_ = targetVel_noCA;
+  //     b=0;
+  //     timeFlag=false;
+  //   }
+  //   else{ // continue to avoid 
+  //     targetPos_ = targetPos_CA;
+  //     targetVel_ = targetVel_CA;
+  //     b=0.5;
+  //   }
+  // }
+  // else{ // no need to avoid
+  //   b=0;
+  //   targetPos_ = targetPos_noCA;
+  //   targetVel_ = targetVel_noCA;
+  //   avoiding=false;
+  //   timeFlag=false;
+  // }
 
 
+  targetPos_ = targetPos_CA;
+  targetVel_ = targetVel_CA;
+  
   /*
 
   targetPos_history[tpvh] = targetPos_;
@@ -449,26 +479,12 @@ void geometricCtrl::updateCA_velpos(void){
 
   
 
-  // std::cout<<"targetPos_: "<<std::endl;
-  // std::cout<<targetPos_<<std::endl;
 
-  // std::cout<<"targetVel_: "<<std::endl;
-  // std::cout<<targetVel_<<std::endl;
-
-  // targetPos_ = b*targetPos_CA + (1-b)*targetPos_noCA;
-  // targetVel_ = b*targetVel_CA + (1-b)*targetVel_noCA;
-
-  
-  // targetPos_ << xt(AGENT_NUMBER-1,0), xt(AGENT_NUMBER-1,1), targetPos_noCA(2);
-  // targetVel_ << vt(AGENT_NUMBER-1,0), vt(AGENT_NUMBER-1,1), targetVel_noCA(2);
-
-
-  
-  geometry_msgs::TwistStamped b_msg;
-  b_msg.header.stamp = ros::Time::now();
-  b_msg.twist.linear.x = b;
-  // b_msg.twist.linear.y = runAway;
-  bPub_.publish(b_msg);
+    
+  // b_msg.header.stamp = ros::Time::now();
+  // b_msg.twist.linear.x = b;
+  // // b_msg.twist.linear.y = runAway;
+  // bPub_.publish(b_msg);
 
   
   geometry_msgs::TwistStamped mavposvel;
@@ -535,7 +551,7 @@ void geometricCtrl::setupScenario(void) {
   sim->setTimeStep(.01f);
   
   // neighborDist,maxNeighbors,timeHorizon,timeHorizonObst,radius,maxSpeed,    
-  sim->setAgentDefaults(30.0f, numAgents*2, 10.0f, 5.0f, radius, v_max);
+  sim->setAgentDefaults(30.0f, numAgents*2, 5.0f, 2.5f, radius, 1.5*v_max);
 
   for (int i=0;i<numAgents; i++){
     sim->addAgent(RVO::Vector2(xt(i,0), xt(i,1)));
@@ -548,16 +564,89 @@ void geometricCtrl::setupScenario(void) {
   // }
 
   // // Add (polygonal) obstacle(s), specifying vertices in counterclockwise order.
-  // std::vector<RVO::Vector2> vertices;
-  // vertices.push_back(RVO::Vector2(-7.0f, -20.0f));
-  // vertices.push_back(RVO::Vector2(7.0f, -20.0f));
-  // vertices.push_back(RVO::Vector2(7.0f, 20.0f));
-  // vertices.push_back(RVO::Vector2(-7.0f, 20.0f));
+  std::vector<std::vector<RVO::Vector2>> obstacles;
+  // obstacles.resize(3);
 
-  // sim->addObstacle(vertices);
+  std::vector<RVO::Vector2> obstacle1, obstacle2, obstacle3, obstacle4;
 
-  // // Process obstacles so that they are accounted for in the simulation.
-  // sim->processObstacles();
+  // must be counterclockwise or will fail!!!
+  obstacle1.push_back(RVO::Vector2(0.0f, 15.0f));
+  obstacle1.push_back(RVO::Vector2(5.0f, 25.0f));
+  obstacle1.push_back(RVO::Vector2(-5.0f, 25.0f));
+
+  obstacles.push_back(obstacle1);
+
+  
+  // obstacle2.push_back(RVO::Vector2(-20.0f, 5.0f));
+  // obstacle2.push_back(RVO::Vector2(-25.0f, -5.0f));
+  // obstacle2.push_back(RVO::Vector2(-15.0f, -5.0f));
+
+  // obstacles.push_back(obstacle2);
+
+  
+  obstacle3.push_back(RVO::Vector2(0.0f, -15.0f));
+  obstacle3.push_back(RVO::Vector2(-5.0f, -25.0f));  
+  obstacle3.push_back(RVO::Vector2(5.0f, -25.0f));
+  
+  obstacles.push_back(obstacle3);
+
+  
+  visualization_msgs::Marker obstacleMsg;
+  obstacleMsg.header.frame_id = "/world";
+  obstacleMsg.header.stamp = ros::Time::now();
+  obstacleMsg.ns = "obstacles";
+  obstacleMsg.id = 0;
+  
+  obstacleMsg.type = visualization_msgs::Marker::LINE_LIST; // this can be move to constructor
+  obstacleMsg.pose.orientation.x = 0.0;
+  obstacleMsg.pose.orientation.y = 0.0;
+  obstacleMsg.pose.orientation.z = 0.0;
+  obstacleMsg.pose.orientation.w = 1.0;
+  obstacleMsg.scale.x = 0.25*1;
+  std_msgs::ColorRGBA clr;
+  clr.r = 1;
+  clr.g = 0;
+  clr.b = 0;
+  clr.a = 1.0;
+
+  for (int j=0; j<obstacles.size(); j++){
+    for (int i=0; i<obstacles[j].size(); i++){
+      geometry_msgs::Point p;
+      if(i!=obstacles[j].size()-1){
+  	p.x=obstacles[j][i].x();
+  	p.y=obstacles[j][i].y();
+  	obstacleMsg.points.push_back(p);
+  	obstacleMsg.colors.push_back(clr);
+
+  	p.x=obstacles[j][i+1].x();
+  	p.y=obstacles[j][i+1].y();
+  	obstacleMsg.points.push_back(p);
+  	obstacleMsg.colors.push_back(clr);
+      }
+      else{
+  	p.x=obstacles[j][i].x();
+  	p.y=obstacles[j][i].y();
+  	obstacleMsg.points.push_back(p);
+  	obstacleMsg.colors.push_back(clr);
+
+  	p.x=obstacles[j][0].x();
+  	p.y=obstacles[j][0].y();
+  	obstacleMsg.points.push_back(p);
+  	obstacleMsg.colors.push_back(clr);
+      }
+    }
+  }
+
+
+  if (obstaclesOn){
+    obstaclesPub_.publish(obstacleMsg);
+    
+    for (int i=0; i<obstacles.size(); i++){
+      sim->addObstacle(obstacles[i]);
+    }
+    
+    sim->processObstacles();
+  }
 }
 
 void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
@@ -885,8 +974,8 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
   else if(tuneAtt){
     ROS_INFO_ONCE("tuning att");
     nh_.getParam("/geometric_controller/desiredAtt", desiredAtt);
-    nh_.param<double>("/geometric_controller/attctrl_tau_", attctrl_tau_,0.2);
-    ROS_INFO_THROTTLE(3,"attctrl_tau_=%f desiredAtt: x=%f, y=%f, z=%f", attctrl_tau_, desiredAtt[0], desiredAtt[1], desiredAtt[2]);
+    // nh_.param<double>("/geometric_controller/attctrl_tau_", attctrl_tau_,0.2);
+    // ROS_INFO_THROTTLE(3,"attctrl_tau_=%f desiredAtt: x=%f, y=%f, z=%f", attctrl_tau_, desiredAtt[0], desiredAtt[1], desiredAtt[2]);
     
     a_ref(0) = desiredAtt[0];
     a_ref(1) = desiredAtt[1];
@@ -922,13 +1011,16 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
 
   }
   else{
-    Eigen::Vector3d errorPos_, errorVel_, errorPos_noCA;
+    Eigen::Vector3d errorPos_, errorVel_, errorPos_noCA, errorVel_filtered;
     Eigen::Matrix3d R_ref;
 
-
     errorPos_   = mavPos_ - targetPos_;
-    // errorPos_noCA = mavPos_ - targetPos_noCA;
-    errorVel_   = mavVel_ - targetVel_;    
+    errorVel_   = mavVel_ - targetVel_;
+
+    // errorVel_history[ev_idx]=errorVel_;
+
+    // errorVel_filtered = std::accumulate(errorVel_history.begin(), errorVel_history.end(), Eigen::Vector3d(0,0,0)) / errorVel_history.size();
+    
         
     a_ref = targetAcc_;
 
@@ -937,12 +1029,62 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     q_ref = acc2quaternion(a_ref - g_, mavYaw_);
     R_ref = quat2RotMatrix(q_ref);
     a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_; //feedforward term for trajectory error
-
-    if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;
+    // if(a_fb(2) < -max_fb_acc_) a_fb(2) = -max_fb_acc_;
+    if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;    
+    
     a_rd = R_ref * D_.asDiagonal() * R_ref.transpose() * targetVel_; //Rotor drag
-    a_des = a_fb + a_ref - a_rd - g_;
-    q_des = acc2quaternion(a_des, mavYaw_);
+    // a_des = a_fb + a_ref - a_rd - g_;
+    a_des = a_fb + a_ref - g_;
 
+
+    // a_des_history[ades_idx]=a_des;    
+
+    // a_des_filtered = std::accumulate(a_des_history.begin(), a_des_history.end(), Eigen::Vector3d(0,0,0)) / a_des_history.size();
+
+    // ades_idx++;
+
+    // if(ades_idx>a_des_history.size()) ades_idx=0;
+    
+    q_des = acc2quaternion(a_des, mavYaw_);
+    cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
+
+    // ev_idx++;    
+    // if (ev_idx>errorVel_history.size()) ev_idx=0;    
+    
+    // b_msg.header.stamp = ros::Time::now();
+    // b_msg.twist.linear.x = errorVel_(0);
+    // b_msg.twist.linear.y = errorVel_(1);
+    // b_msg.twist.linear.z = errorVel_(2);
+    // b_msg.twist.angular.x = errorPos_(0);
+    // b_msg.twist.angular.y = errorPos_(1);
+    // b_msg.twist.angular.z = errorPos_(2);
+
+    // b_msg.twist.linear.x = Kpos_(0)*errorPos_(0);
+    // b_msg.twist.linear.y = Kpos_(1)*errorPos_(1);
+    // b_msg.twist.linear.z = Kpos_(2)*errorPos_(2);
+
+    // b_msg.twist.linear.x = Kvel_(0)*errorVel_(0);
+    // b_msg.twist.linear.y = Kvel_(1)*errorVel_(1);
+    // b_msg.twist.linear.z = Kvel_(2)*errorVel_(2);
+
+    // b_msg.twist.linear.x = a_des_filtered(0);
+    // b_msg.twist.linear.y = a_des_filtered(1);
+    // b_msg.twist.linear.z = a_des_filtered(2);
+
+    // b_msg.twist.linear.x = Kvel_(0)*errorVel_filtered(0);
+    // b_msg.twist.linear.y = Kvel_(1)*errorVel_filtered(1);
+    // b_msg.twist.linear.z = Kvel_(2)*errorVel_filtered(2);
+
+    // b_msg.twist.angular.x = Kvel_(0)*errorVel_(0);
+    // b_msg.twist.angular.y = Kvel_(1)*errorVel_(1);
+    // b_msg.twist.angular.z = Kvel_(2)*errorVel_(2);
+
+    // b_msg.twist.angular.x = a_des(0);
+    // b_msg.twist.angular.y = a_des(1);
+    // b_msg.twist.angular.z = a_des(2);
+
+
+    
 
     // convert to current and desired euler rpy and publish both
     tf::Quaternion qd(q_des(1), q_des(2), q_des(3), q_des(0));      
@@ -975,7 +1117,7 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     // std::cout<<"acc:"<<std::endl;
     // std::cout<<a_ref<<std::endl;  
   
-    cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
+
   }
 
 }
@@ -1059,9 +1201,9 @@ Eigen::Vector4d geometricCtrl::attcontroller(Eigen::Vector4d &ref_att, Eigen::Ve
   inverse << 1.0, -1.0, -1.0, -1.0;
   q_inv = inverse.asDiagonal() * curr_att;
   qe = quatMultiplication(q_inv, ref_att);
-  ratecmd(0) = (2.0 / attctrl_tau_) * std::copysign(1.0, qe(0)) * qe(1);
-  ratecmd(1) = (2.0 / attctrl_tau_) * std::copysign(1.0, qe(0)) * qe(2);
-  ratecmd(2) = (2.0 / attctrl_tau_) * std::copysign(1.0, qe(0)) * qe(3);
+  ratecmd(0) = (2.0 / attctrl_tau_(0)) * std::copysign(1.0, qe(0)) * qe(1);
+  ratecmd(1) = (2.0 / attctrl_tau_(1)) * std::copysign(1.0, qe(0)) * qe(2);
+  ratecmd(2) = (2.0 / attctrl_tau_(2)) * std::copysign(1.0, qe(0)) * qe(3);
   rotmat = quat2RotMatrix(mavAtt_);
   zb = rotmat.col(2);
   // ratecmd(3) = std::max(0.0, std::min(1.0, norm_thrust_const_ * ref_acc.dot(zb))); //Calculate thrust

@@ -73,6 +73,7 @@ class geometricCtrl
     ros::Publisher mavPosVelPub_;
     ros::Publisher mavAccelPub_;
     ros::Publisher bPub_;
+    ros::Publisher obstaclesPub_;
     std::vector<ros::Publisher> agentPos_pub, agentVel_pub;
     ros::ServiceClient arming_client_;
     ros::ServiceClient set_mode_client_;
@@ -85,8 +86,8 @@ class geometricCtrl
     int AGENT_NUMBER;
     std::vector<double> desiredRate, desiredAtt;
     std::vector<ros::Time> agentInfo_time;
-    bool tuneRate, tuneAtt, avoiding, timeFlag;
-    ros::Time finishedAvoid_time;
+    bool tuneRate, tuneAtt, avoiding, timeFlag, obstaclesOn;
+    ros::Time finishedAvoid_time, avoid_time;
     mavros_msgs::RCIn  RCin;
     int num_rotors_;
     string mav_name_;
@@ -98,7 +99,8 @@ class geometricCtrl
     bool use_gzstates_, sim_enable_;
     double kp_rot_, kd_rot_;
     double reference_request_dt_;
-    double attctrl_tau_;
+    /* double attctrl_tau_; */
+    Eigen::Vector3d attctrl_tau_;
     double norm_thrust_const_;
     double max_fb_acc_;
     float radius;
@@ -106,6 +108,11 @@ class geometricCtrl
     std::vector<bool> newPosData, newVelData;
     bool newRefData, avoidAgents, newDataFlag;
     int numAgents;
+    geometry_msgs::TwistStamped b_msg;
+
+    std::vector<Eigen::Vector3d> errorVel_history;
+    /* std::vector<Eigen::Vector3d> errorVel_history; */
+    int ev_idx;
 
     mavros_msgs::State current_state_;
     mavros_msgs::SetMode offb_set_mode_;
@@ -121,7 +128,10 @@ class geometricCtrl
     Eigen::Vector3d goalPos_, targetPos_, targetVel_, targetAcc_, targetJerk_, targetSnap_, targetPos_prev_, targetVel_prev_, targetCA_vel, targetCA_pos, targetPos_noCA, targetVel_noCA, targetAcc_noCA, targetPos_noCA_prev_, targetVel_noCA_prev_;
     Eigen::Vector3d mavPos_, mavVel_, mavRate_;
     double mavYaw_;
-    Eigen::Vector3d a_des, a_fb, a_ref, a_rd, g_;
+    Eigen::Vector3d a_des, a_fb, a_ref, a_rd, g_, a_des_filtered;
+    std::vector<Eigen::Vector3d> a_des_history;
+    int ades_idx;
+    
     Eigen::Vector4d mavAtt_, q_ref, q_des;
     Eigen::Vector4d cmdBodyRate_; //{wx, wy, wz, Thrust}
     Eigen::Vector3d Kpos_, Kvel_, D_, Kpos_noCA_;
