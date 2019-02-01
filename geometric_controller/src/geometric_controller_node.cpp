@@ -981,7 +981,7 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     a_ref(1) = desiredAtt[1];
     a_ref(2) = desiredAtt[2]; 
         
-    a_des = a_ref - g_;
+    a_des = a_ref;// - g_;
     q_des = acc2quaternion(a_des, mavYaw_);
 
     // convert to current and desired euler rpy and publish both
@@ -994,17 +994,28 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     tf::Matrix3x3 mc(qc);
     double rollC, pitchC, yawC;
     mc.getRPY(rollC, pitchC, yawC);
+    mc.setRPY(rollC,pitchC,0);
 
+    tf::Vector3 z_des = md.getColumn(2);
     des_eulerRefMsg_.header.stamp = ros::Time::now();
-    des_eulerRefMsg_.vector.x = rollD*180.0/M_PI; 
-    des_eulerRefMsg_.vector.y = pitchD*180.0/M_PI;
-    des_eulerRefMsg_.vector.z = yawD*180.0/M_PI;
-    des_eulerRefPub_.publish(des_eulerRefMsg_);
-
+    des_eulerRefMsg_.vector.x = z_des.getX(); 
+    des_eulerRefMsg_.vector.y = z_des.getY();
+    des_eulerRefMsg_.vector.z = z_des.getZ();
+    
+    //des_eulerRefMsg_.vector.x = rollC*180.0/M_PI; 
+    //des_eulerRefMsg_.vector.y = pitchC*180.0/M_PI;
+    //des_eulerRefMsg_.vector.z = yawC*180.0/M_PI;
+    
+    des_eulerRefPub_.publish(des_eulerRefMsg_);    
+    
+    tf::Vector3 z_ = mc.getColumn(2);
     cur_eulerRefMsg_.header.stamp=ros::Time::now();
-    cur_eulerRefMsg_.vector.x=rollC*180.0/M_PI;
-    cur_eulerRefMsg_.vector.y=pitchC*180.0/M_PI;
-    cur_eulerRefMsg_.vector.z=yawC*180.0/M_PI;
+    cur_eulerRefMsg_.vector.x=z_.getX();
+    cur_eulerRefMsg_.vector.y=z_.getY();
+    cur_eulerRefMsg_.vector.z=z_.getZ();
+    //cur_eulerRefMsg_.vector.x=rollC*180.0/M_PI;
+    //cur_eulerRefMsg_.vector.y=pitchC*180.0/M_PI;
+    //cur_eulerRefMsg_.vector.z=yawC*180.0/M_PI;
     cur_eulerRefPub_.publish(cur_eulerRefMsg_);
         
     cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
