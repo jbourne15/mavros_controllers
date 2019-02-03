@@ -7,8 +7,8 @@ desiredRate: [0,1,0,.1] # wx,wy,wz,thrust ie roll pitch yaw rates in rad/sec
 #-----------------------------------#
 # attitude loop
 tuneAtt: true
-desiredAtt: [0,0,1.81] #  orientation vector
+desiredAtt: [0, 0, 1.81] #  orientation vector
 # tuning parameter:
-attctrl_tau_: .2
+attctrl_tau_: [.2, .2, .15]
 #-----------------------------------#
 

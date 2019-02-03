@@ -59,8 +59,6 @@
   <build_depend>geodetic_utils</build_depend>
 
 
-  <build_depend>rvo2</build_depend>
-  <run_depend>rvo2</run_depend>
   <build_depend>enif_iuc</build_depend>
   <run_depend>enif_iuc</run_depend>
 

@@ -36,7 +36,7 @@
 #include <gazebo_msgs/ModelStates.h>
 #include <mavros_msgs/SetMavFrame.h>
 
-#include <rvo2/RVO.h>
+#include <RVO.h>
 #include <dlib/matrix.h>
 #include <Eigen/Eigen>
 #define STATS_USE_EIGEN
@@ -84,7 +84,7 @@ class geometricCtrl
 
     int mode, tpvh;
     int AGENT_NUMBER;
-    std::vector<double> desiredRate, desiredAtt;
+    std::vector<double> desiredRate, desiredAtt, attctrl_tau_;
     std::vector<ros::Time> agentInfo_time;
     bool tuneRate, tuneAtt, avoiding, timeFlag, obstaclesOn;
     ros::Time finishedAvoid_time, avoid_time;
@@ -100,7 +100,7 @@ class geometricCtrl
     double kp_rot_, kd_rot_;
     double reference_request_dt_;
     /* double attctrl_tau_; */
-    Eigen::Vector3d attctrl_tau_;
+    //Eigen::Vector3d attctrl_tau_;
     double norm_thrust_const_;
     double max_fb_acc_;
     float radius;

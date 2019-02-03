@@ -34,7 +34,11 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   
   D_ << 0.0, 0.0, 0.0;
   // attctrl_tau_ = 0.15; //0.2;
-  attctrl_tau_ << 0.20, 0.20, .2;
+  // attctrl_tau_ << 0.20, 0.20, .2;
+  attctrl_tau_.resize(3);
+  attctrl_tau_[0] = 0.2;
+  attctrl_tau_[1] = 0.2;
+  attctrl_tau_[2] = 0.2;
   norm_thrust_const_ = .1;
   // max_fb_acc_ = 7.0;
   max_fb_acc_ = 5.0;
@@ -73,6 +77,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<bool>("geometric_controller/tuneAtt", tuneAtt, false); 
   nh_.getParam("geometric_controller/desiredRate", desiredRate);
   nh_.getParam("geometric_controller/desiredAtt", desiredAtt);
+  nh_.getParam("geometric_controller/attctrl_tau_", attctrl_tau_);
   // nh_.param<double>("geometric_controller/attctrl_tau_", attctrl_tau_,0.3);
   nh_.param<int>(agentName+"/pf/agents", numAgents, 4);  
   nh_.param<float>("geometric_controller/radius", radius, 2.5);
@@ -514,12 +519,16 @@ void geometricCtrl::wait4Home(void){
         nh_.getParam("/gps_ref_longitude", H_longitude) &&
         nh_.getParam("/gps_ref_altitude", H_altitude)){
       g_geodetic_converter.initialiseReference(H_latitude, H_longitude, H_altitude);
-    }
-    
-    ROS_INFO_THROTTLE(5,"[ctrl] waiting for pos and vel data from other agents and reference data %d, %d, %d, %d", !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData);
+    }    
 
     ros::Duration(1.0).sleep();
     ros::spinOnce();
+
+    if(tuneAtt || tuneRate){
+      break;
+    }
+
+    ROS_INFO_THROTTLE(5,"[ctrl] waiting for pos and vel data from other agents and reference data %d, %d, %d, %d", !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData);
       
   } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
 
@@ -964,7 +973,7 @@ void geometricCtrl::pubRateCommands(){
 void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
   if (tuneRate){
     ROS_INFO_ONCE("tuning rate");
-    nh_.getParam("/geometric_controller/desiredRate", desiredRate);
+    nh_.getParam("geometric_controller/desiredRate", desiredRate);
     ROS_INFO_THROTTLE(3,"desiredRate: wx=%f, wy=%f, wz=%f, t=%f", desiredRate[0], desiredRate[1], desiredRate[2], desiredRate[3]);
     cmdBodyRate_(0) = desiredRate[0]; // roll
     cmdBodyRate_(1) = desiredRate[1]; // pitch
@@ -973,13 +982,15 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
   }
   else if(tuneAtt){
     ROS_INFO_ONCE("tuning att");
-    nh_.getParam("/geometric_controller/desiredAtt", desiredAtt);
-    // nh_.param<double>("/geometric_controller/attctrl_tau_", attctrl_tau_,0.2);
-    // ROS_INFO_THROTTLE(3,"attctrl_tau_=%f desiredAtt: x=%f, y=%f, z=%f", attctrl_tau_, desiredAtt[0], desiredAtt[1], desiredAtt[2]);
+    nh_.getParam("geometric_controller/desiredAtt", desiredAtt);
+    nh_.getParam("geometric_controller/attctrl_tau_", attctrl_tau_);
+    ROS_INFO_THROTTLE(3,"attctrl_tau_=[%f, %f, %f] desiredAtt: [%f, %f, %f]", attctrl_tau_[0], attctrl_tau_[1], attctrl_tau_[2], desiredAtt[0], desiredAtt[1], desiredAtt[2]);
     
     a_ref(0) = desiredAtt[0];
     a_ref(1) = desiredAtt[1];
-    a_ref(2) = desiredAtt[2]; 
+    a_ref(2) = desiredAtt[2];
+
+    a_ref = 1.81*a_ref.normalized(); // prevent large accelerations
         
     a_des = a_ref;// - g_;
     q_des = acc2quaternion(a_des, mavYaw_);
@@ -998,21 +1009,22 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
 
     tf::Vector3 z_des = md.getColumn(2);
     des_eulerRefMsg_.header.stamp = ros::Time::now();
-    des_eulerRefMsg_.vector.x = z_des.getX(); 
-    des_eulerRefMsg_.vector.y = z_des.getY();
-    des_eulerRefMsg_.vector.z = z_des.getZ();
+    des_eulerRefMsg_.vector.x = z_des.getX(); //q_des(1);
+    des_eulerRefMsg_.vector.y = z_des.getY(); //q_des(2);
+    des_eulerRefMsg_.vector.z = z_des.getZ(); //q_des(3);
     
-    //des_eulerRefMsg_.vector.x = rollC*180.0/M_PI; 
-    //des_eulerRefMsg_.vector.y = pitchC*180.0/M_PI;
-    //des_eulerRefMsg_.vector.z = yawC*180.0/M_PI;
+    //    des_eulerRefMsg_.vector.x = rollD*180.0/M_PI; 
+    //    des_eulerRefMsg_.vector.y = pitchD*180.0/M_PI;
+    //    des_eulerRefMsg_.vector.z = yawD*180.0/M_PI;
     
     des_eulerRefPub_.publish(des_eulerRefMsg_);    
     
     tf::Vector3 z_ = mc.getColumn(2);
     cur_eulerRefMsg_.header.stamp=ros::Time::now();
-    cur_eulerRefMsg_.vector.x=z_.getX();
-    cur_eulerRefMsg_.vector.y=z_.getY();
-    cur_eulerRefMsg_.vector.z=z_.getZ();
+    cur_eulerRefMsg_.vector.x=z_.getX(); //mavAtt_(1);
+    cur_eulerRefMsg_.vector.y=z_.getY(); //mavAtt_(2);
+    cur_eulerRefMsg_.vector.z=z_.getZ(); //mavAtt_(3);//
+    
     //cur_eulerRefMsg_.vector.x=rollC*180.0/M_PI;
     //cur_eulerRefMsg_.vector.y=pitchC*180.0/M_PI;
     //cur_eulerRefMsg_.vector.z=yawC*180.0/M_PI;
@@ -1212,13 +1224,14 @@ Eigen::Vector4d geometricCtrl::attcontroller(Eigen::Vector4d &ref_att, Eigen::Ve
   inverse << 1.0, -1.0, -1.0, -1.0;
   q_inv = inverse.asDiagonal() * curr_att;
   qe = quatMultiplication(q_inv, ref_att);
-  ratecmd(0) = (2.0 / attctrl_tau_(0)) * std::copysign(1.0, qe(0)) * qe(1);
-  ratecmd(1) = (2.0 / attctrl_tau_(1)) * std::copysign(1.0, qe(0)) * qe(2);
-  ratecmd(2) = (2.0 / attctrl_tau_(2)) * std::copysign(1.0, qe(0)) * qe(3);
+  ratecmd(0) = (2.0 / attctrl_tau_[0]) * std::copysign(1.0, qe(0)) * qe(1);
+  ratecmd(1) = (2.0 / attctrl_tau_[1]) * std::copysign(1.0, qe(0)) * qe(2);
+  ratecmd(2) = (2.0 / attctrl_tau_[2]) * std::copysign(1.0, qe(0)) * qe(3);
   rotmat = quat2RotMatrix(mavAtt_);
   zb = rotmat.col(2);
   // ratecmd(3) = std::max(0.0, std::min(1.0, norm_thrust_const_ * ref_acc.dot(zb))); //Calculate thrust
   ratecmd(3) = std::max(0.0, norm_thrust_const_ * ref_acc.dot(zb)); //Calculate thrust
+  ratecmd(3) = norm_thrust_const_ * ref_acc.dot(zb); //Calculate thrust
   return ratecmd;
 }
 
@@ -1229,4 +1242,5 @@ bool geometricCtrl::ctrltriggerCallback(std_srvs::SetBool::Request &req,
   ctrl_mode_ = mode;
   res.success = ctrl_mode_;
   res.message = "controller triggered";
+  return true;
 }

@@ -3,7 +3,7 @@ project(geometric_controller)
 
 include_directories(${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS})
 
-find_package(catkin_simple REQUIRED geodetic_utils enif_iuc rvo2)
+find_package(catkin_simple REQUIRED geodetic_utils enif_iuc)
 catkin_simple(ALL_DEPS_REQUIRED)
 
 add_definitions(-std=c++11)
@@ -12,12 +12,13 @@ add_definitions(-std=c++11)
 # BINARIES #
 ############
 
-include(/home/jbourne/Software/dlib-19.15/dlib/cmake) # lab
+include(/home/odroid/Software/dlib-19.13/dlib/cmake) # lab
+link_directories(/usr/local/lib)
 
 cs_add_executable(geometric_controller
         src/geometric_controller.cpp src/geometric_controller_node.cpp
         )
-target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} dlib)
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} dlib RVO)
 ##########
 # EXPORT #
 ##########
