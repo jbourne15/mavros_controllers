@@ -36,8 +36,8 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   // attctrl_tau_ = 0.15; //0.2;
   // attctrl_tau_ << 0.20, 0.20, .2;
   attctrl_tau_.resize(3);
-  attctrl_tau_[0] = 0.2;
-  attctrl_tau_[1] = 0.2;
+  attctrl_tau_[0] = 0.3;
+  attctrl_tau_[1] = 0.375;
   attctrl_tau_[2] = 0.2;
   norm_thrust_const_ = .1;
   // max_fb_acc_ = 7.0;
@@ -148,8 +148,9 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   referencePosePub_ = nh_.advertise<geometry_msgs::PoseStamped>(agentName+"/reference/pose", 1);
 
   // if (tuneAtt){
-  des_eulerRefPub_ = nh_.advertise<geometry_msgs::Vector3Stamped>(agentName+"/desEuler",1);
-  cur_eulerRefPub_ = nh_.advertise<geometry_msgs::Vector3Stamped>(agentName+"/curEuler",1);
+  des_attRefPub_ = nh_.advertise<geometry_msgs::QuaternionStamped>(agentName+"/desAtt",1);
+  cur_attRefPub_ = nh_.advertise<geometry_msgs::QuaternionStamped>(agentName+"/curAtt",1);
+  error_attPub_ = nh_.advertise<geometry_msgs::QuaternionStamped>(agentName+"/errorAtt",1);
 
   mavPosVelPub_ = nh_.advertise<geometry_msgs::TwistStamped>(agentName+"/mavPosVel",1);
   mavAccelPub_  = nh_.advertise<geometry_msgs::AccelStamped>(agentName+"/mavAccel",1);
@@ -832,6 +833,24 @@ void geometricCtrl::mavposeCallback(const geometry_msgs::PoseStamped& msg){
     mavAtt_(1) = msg.pose.orientation.x;
     mavAtt_(2) = msg.pose.orientation.y;
     mavAtt_(3) = msg.pose.orientation.z;
+
+    //    /*
+    if (tuneAtt){ 
+      tf::Quaternion qc(mavAtt_(1), mavAtt_(2), mavAtt_(3), mavAtt_(0)), qnew;
+      
+      tf::Matrix3x3 mc(qc);      
+      double rollC, pitchC, yawC;
+      mc.getRPY(rollC, pitchC, yawC);
+      //mavYaw_=yawC;
+      mc.setRPY(rollC,pitchC,mavYaw_); // SET the yaw to be desired!!!
+      mc.getRotation(qnew);      
+      mavAtt_(0) = qnew.w();
+      mavAtt_(1) = qnew.x();
+      mavAtt_(2) = qnew.y();
+      mavAtt_(3) = qnew.z();
+    }
+    //    */
+    
     newPosData[AGENT_NUMBER-1]=true;
     xt(AGENT_NUMBER-1,0) = mavPos_(0);
     xt(AGENT_NUMBER-1,1) = mavPos_(1);
@@ -990,12 +1009,26 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     a_ref(1) = desiredAtt[1];
     a_ref(2) = desiredAtt[2];
 
-    a_ref = 1.81*a_ref.normalized(); // prevent large accelerations
+    a_ref = 2.0*a_ref.normalized(); // prevent large accelerations
         
     a_des = a_ref;// - g_;
     q_des = acc2quaternion(a_des, mavYaw_);
 
-    // convert to current and desired euler rpy and publish both
+    geometry_msgs::QuaternionStamped qdes, qcur;
+    qdes.header.stamp = ros::Time::now();
+    qcur.header.stamp = qdes.header.stamp;
+        
+    qdes.quaternion.x = q_des(1);
+    qdes.quaternion.y = q_des(2);
+    qdes.quaternion.z = q_des(3);
+    qdes.quaternion.w = q_des(0);
+    
+    qcur.quaternion.x = mavAtt_(1);
+    qcur.quaternion.y = mavAtt_(2);
+    qcur.quaternion.z = mavAtt_(3);
+    qcur.quaternion.w = mavAtt_(0);    
+
+
     tf::Quaternion qd(q_des(1), q_des(2), q_des(3), q_des(0));      
     tf::Matrix3x3 md(qd);
     double rollD, pitchD, yawD;
@@ -1005,31 +1038,19 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     tf::Matrix3x3 mc(qc);
     double rollC, pitchC, yawC;
     mc.getRPY(rollC, pitchC, yawC);
-    mc.setRPY(rollC,pitchC,0);
 
-    tf::Vector3 z_des = md.getColumn(2);
-    des_eulerRefMsg_.header.stamp = ros::Time::now();
-    des_eulerRefMsg_.vector.x = z_des.getX(); //q_des(1);
-    des_eulerRefMsg_.vector.y = z_des.getY(); //q_des(2);
-    des_eulerRefMsg_.vector.z = z_des.getZ(); //q_des(3);
-    
-    //    des_eulerRefMsg_.vector.x = rollD*180.0/M_PI; 
-    //    des_eulerRefMsg_.vector.y = pitchD*180.0/M_PI;
-    //    des_eulerRefMsg_.vector.z = yawD*180.0/M_PI;
-    
-    des_eulerRefPub_.publish(des_eulerRefMsg_);    
-    
-    tf::Vector3 z_ = mc.getColumn(2);
-    cur_eulerRefMsg_.header.stamp=ros::Time::now();
-    cur_eulerRefMsg_.vector.x=z_.getX(); //mavAtt_(1);
-    cur_eulerRefMsg_.vector.y=z_.getY(); //mavAtt_(2);
-    cur_eulerRefMsg_.vector.z=z_.getZ(); //mavAtt_(3);//
-    
-    //cur_eulerRefMsg_.vector.x=rollC*180.0/M_PI;
-    //cur_eulerRefMsg_.vector.y=pitchC*180.0/M_PI;
-    //cur_eulerRefMsg_.vector.z=yawC*180.0/M_PI;
-    cur_eulerRefPub_.publish(cur_eulerRefMsg_);
-        
+    qdes.quaternion.x = rollD*180.0/M_PI; 
+    qdes.quaternion.y = pitchD*180.0/M_PI;
+    qdes.quaternion.z = yawD*180.0/M_PI;
+
+    qcur.header.stamp=ros::Time::now();
+    qcur.quaternion.x=rollC*180.0/M_PI;
+    qcur.quaternion.y=pitchC*180.0/M_PI;
+    qcur.quaternion.z=yawC*180.0/M_PI;
+
+    des_attRefPub_.publish(qdes);
+    cur_attRefPub_.publish(qcur);
+                
     cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
 
   }
@@ -1107,8 +1128,23 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     // b_msg.twist.angular.z = a_des(2);
 
 
+    geometry_msgs::QuaternionStamped qdes, qcur;
+    qdes.header.stamp = ros::Time::now();
+    qcur.header.stamp = qdes.header.stamp;
+    qdes.quaternion.x = q_des(1);
+    qdes.quaternion.y = q_des(2);
+    qdes.quaternion.z = q_des(3);
+    qdes.quaternion.w = q_des(0);
     
+    qcur.quaternion.x = mavAtt_(1);
+    qcur.quaternion.y = mavAtt_(2);
+    qcur.quaternion.z = mavAtt_(3);
+    qcur.quaternion.w = mavAtt_(0);
 
+    des_attRefPub_.publish(qdes);
+    cur_attRefPub_.publish(qcur);
+    
+    /*
     // convert to current and desired euler rpy and publish both
     tf::Quaternion qd(q_des(1), q_des(2), q_des(3), q_des(0));      
     tf::Matrix3x3 md(qd);
@@ -1120,18 +1156,18 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     double rollC, pitchC, yawC;
     mc.getRPY(rollC, pitchC, yawC);
 
-    des_eulerRefMsg_.header.stamp = ros::Time::now();
-    des_eulerRefMsg_.vector.x = rollD*180.0/M_PI; 
-    des_eulerRefMsg_.vector.y = pitchD*180.0/M_PI;
-    des_eulerRefMsg_.vector.z = yawD*180.0/M_PI;
-    des_eulerRefPub_.publish(des_eulerRefMsg_);
+    des_attRefMsg_.header.stamp = ros::Time::now();
+    des_attRefMsg_.vector.x = rollD*180.0/M_PI; 
+    des_attRefMsg_.vector.y = pitchD*180.0/M_PI;
+    des_attRefMsg_.vector.z = yawD*180.0/M_PI;
+    des_attRefPub_.publish(des_attRefMsg_);
 
-    cur_eulerRefMsg_.header.stamp=ros::Time::now();
-    cur_eulerRefMsg_.vector.x=rollC*180.0/M_PI;
-    cur_eulerRefMsg_.vector.y=pitchC*180.0/M_PI;
-    cur_eulerRefMsg_.vector.z=yawC*180.0/M_PI;
-    cur_eulerRefPub_.publish(cur_eulerRefMsg_);
-
+    cur_attRefMsg_.header.stamp=ros::Time::now();
+    cur_attRefMsg_.vector.x=rollC*180.0/M_PI;
+    cur_attRefMsg_.vector.y=pitchC*180.0/M_PI;
+    cur_attRefMsg_.vector.z=yawC*180.0/M_PI;
+    cur_attRefPub_.publish(cur_attRefMsg_);
+    */
 
     // std::cout<<"pos:"<<std::endl;
     // std::cout<<errorPos_[2]<<std::endl;
@@ -1212,7 +1248,7 @@ Eigen::Vector4d geometricCtrl::acc2quaternion(Eigen::Vector3d vector_acc, double
   rotmat << xb_des(0), yb_des(0), zb_des(0),
             xb_des(1), yb_des(1), zb_des(1),
             xb_des(2), yb_des(2), zb_des(2);
-  quat = rot2Quaternion(rotmat);  
+  quat = rot2Quaternion(rotmat);
   return quat;
 }
 
@@ -1224,6 +1260,16 @@ Eigen::Vector4d geometricCtrl::attcontroller(Eigen::Vector4d &ref_att, Eigen::Ve
   inverse << 1.0, -1.0, -1.0, -1.0;
   q_inv = inverse.asDiagonal() * curr_att;
   qe = quatMultiplication(q_inv, ref_att);
+  
+  geometry_msgs::QuaternionStamped errorQ;
+  errorQ.header.stamp= ros::Time::now();
+  errorQ.quaternion.w = qe(0);
+  errorQ.quaternion.x = qe(1);
+  errorQ.quaternion.y = qe(2);
+  errorQ.quaternion.z = qe(3);
+  
+  error_attPub_.publish(errorQ);
+      
   ratecmd(0) = (2.0 / attctrl_tau_[0]) * std::copysign(1.0, qe(0)) * qe(1);
   ratecmd(1) = (2.0 / attctrl_tau_[1]) * std::copysign(1.0, qe(0)) * qe(2);
   ratecmd(2) = (2.0 / attctrl_tau_[2]) * std::copysign(1.0, qe(0)) * qe(3);

@@ -23,6 +23,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Vector3Stamped.h>
 #include <geometry_msgs/AccelStamped.h>
+#include <geometry_msgs/QuaternionStamped.h>
 #include <visualization_msgs/Marker.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
@@ -68,8 +69,8 @@ class geometricCtrl
     ros::Subscriber rcSub_;  
     ros::Publisher rotorVelPub_, angularVelPub_;
     ros::Publisher referencePosePub_;
-    ros::Publisher des_eulerRefPub_;
-    ros::Publisher cur_eulerRefPub_;
+    ros::Publisher des_attRefPub_, error_attPub_;
+    ros::Publisher cur_attRefPub_;
     ros::Publisher mavPosVelPub_;
     ros::Publisher mavAccelPub_;
     ros::Publisher bPub_;
