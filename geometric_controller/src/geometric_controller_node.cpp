@@ -30,15 +30,14 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
   // Kpos_ << -5.0, -5.0, -40.0;
   // Kvel_ << -4.0, -4.0, -5.0;
-
   
   D_ << 0.0, 0.0, 0.0;
   // attctrl_tau_ = 0.15; //0.2;
   // attctrl_tau_ << 0.20, 0.20, .2;
   attctrl_tau_.resize(3);
   attctrl_tau_[0] = 0.3;
-  attctrl_tau_[1] = 0.375;
-  attctrl_tau_[2] = 0.2;
+  attctrl_tau_[1] = 0.3;
+  attctrl_tau_[2] = 0.3;
   norm_thrust_const_ = .1;
   // max_fb_acc_ = 7.0;
   max_fb_acc_ = 5.0;
@@ -196,7 +195,7 @@ void geometricCtrl::updateAgents(void) {
       
       desVel = floor(targetVel_noCA.norm())*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
       
-      // desVel = 2*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) ;//+ 0.5*RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
+      // desVel = 2*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + 0.5*RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
 
       sim->setAgentPrefVelocity(i, desVel);
       // sim->setAgentPrefVelocity(i, RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1)));      
@@ -321,7 +320,7 @@ void geometricCtrl::updateCA_velpos(void){
 
   targetPos_ = targetPos_CA;
   targetVel_ = targetVel_CA;
-  
+
   /*
 
   targetPos_history[tpvh] = targetPos_;
@@ -971,6 +970,10 @@ void geometricCtrl::pubReferencePose(){
   referencePoseMsg_.pose.position.x = targetPos_noCA(0);
   referencePoseMsg_.pose.position.y = targetPos_noCA(1);
   referencePoseMsg_.pose.position.z = targetPos_noCA(2);
+  // referencePoseMsg_.pose.position.x = targetPos_(0);
+  // referencePoseMsg_.pose.position.y = targetPos_(1);
+  // referencePoseMsg_.pose.position.z = targetPos_(2);
+
   referencePoseMsg_.pose.orientation.w = q_des(0);
   referencePoseMsg_.pose.orientation.x = q_des(1);
   referencePoseMsg_.pose.orientation.y = q_des(2);
@@ -1277,7 +1280,7 @@ Eigen::Vector4d geometricCtrl::attcontroller(Eigen::Vector4d &ref_att, Eigen::Ve
   zb = rotmat.col(2);
   // ratecmd(3) = std::max(0.0, std::min(1.0, norm_thrust_const_ * ref_acc.dot(zb))); //Calculate thrust
   ratecmd(3) = std::max(0.0, norm_thrust_const_ * ref_acc.dot(zb)); //Calculate thrust
-  ratecmd(3) = norm_thrust_const_ * ref_acc.dot(zb); //Calculate thrust
+  // ratecmd(3) = norm_thrust_const_ * ref_acc.dot(zb); //Calculate thrust
   return ratecmd;
 }
 
