@@ -192,9 +192,6 @@ void geometricCtrl::updateAgents(void) {
 
       RVO::Vector2 desVel;
 
-      
-      //desVel = floor(targetVel_noCA.norm())*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
-      
       desVel = 2*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + 0.5*RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
 
       sim->setAgentPrefVelocity(i, desVel);
@@ -530,7 +527,9 @@ void geometricCtrl::wait4Home(void){
 
     ROS_INFO_THROTTLE(5,"[ctrl] waiting for pos and vel data from other agents and reference data %d, %d, %d, %d", !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData);
       
-  } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
+  // } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
+
+  } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;})) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
 
   newDataFlag=true;
 }
