@@ -193,9 +193,9 @@ void geometricCtrl::updateAgents(void) {
       RVO::Vector2 desVel;
 
       
-      desVel = floor(targetVel_noCA.norm())*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
+      //desVel = floor(targetVel_noCA.norm())*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
       
-      // desVel = 2*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + 0.5*RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
+      desVel = 2*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + 0.5*RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
 
       sim->setAgentPrefVelocity(i, desVel);
       // sim->setAgentPrefVelocity(i, RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1)));      
