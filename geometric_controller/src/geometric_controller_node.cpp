@@ -161,7 +161,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   frame_client    = nh_.serviceClient<mavros_msgs::SetMavFrame>(agentName+"/mavros/mav_frame");
   
   mav_frame.request.mav_frame = mav_frame.request.FRAME_BODY_NED;
-  frame_client.call(mav_frame);
+  std::cout<<"frame call: "<<frame_client.call(mav_frame)<<std::endl;
 
   if (tuneRate && tuneAtt){
     ROS_ERROR("tuneRate=true and tuneAtt=true, only tune one");
@@ -527,9 +527,7 @@ void geometricCtrl::wait4Home(void){
 
     ROS_INFO_THROTTLE(5,"[ctrl] waiting for pos and vel data from other agents and reference data %d, %d, %d, %d", !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData);
       
-  // } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
-
-  } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;})) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
+  } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
 
   newDataFlag=true;
 }
