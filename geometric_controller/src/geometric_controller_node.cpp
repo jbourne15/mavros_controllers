@@ -15,7 +15,6 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   ctrl_mode_(2){
 
   mode=10000;
-
   nh_.param<int>("geometric_controller/agent_number", AGENT_NUMBER, 1);
   
   /// Target State is the reference state received from the trajectory
@@ -27,10 +26,15 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   g_ << 0.0, 0.0, -9.8;
   Kpos_ << -3.0, -3.0, -60.0;
   Kvel_ << -3.0, -3.0, -60.0;
+  std::vector<double> kp, kv;
 
-  // Kpos_ << -5.0, -5.0, -40.0;
-  // Kvel_ << -4.0, -4.0, -5.0;
+  nh_.getParam("geometric_controller/kp", kp);
+  Kpos_<<kp[0],kp[1],kp[2];
   
+  nh_.getParam("geometric_controller/kv", kv);
+  Kvel_<<kv[0],kv[1],kv[2];
+
+
   D_ << 0.0, 0.0, 0.0;
   // attctrl_tau_ = 0.15; //0.2;
   // attctrl_tau_ << 0.20, 0.20, .2;
@@ -38,9 +42,11 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   attctrl_tau_[0] = 0.3;
   attctrl_tau_[1] = 0.3;
   attctrl_tau_[2] = 0.3;
-  norm_thrust_const_ = .1;
-  // max_fb_acc_ = 7.0;
-  max_fb_acc_ = 5.0;
+  nh_.getParam("geometric_controller/attctrl_tau_", attctrl_tau_);
+
+  nh_.param<double>("geometric_controller/norm_thrust_const_", norm_thrust_const_, 0.1);
+  nh_.param<double>("geometric_controller/max_fb_acc_", max_fb_acc_, 5.0);
+
   use_gzstates_ = false;
 
   agentName = ros::this_node::getNamespace();  
@@ -76,8 +82,8 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<bool>("geometric_controller/tuneAtt", tuneAtt, false); 
   nh_.getParam("geometric_controller/desiredRate", desiredRate);
   nh_.getParam("geometric_controller/desiredAtt", desiredAtt);
-  nh_.getParam("geometric_controller/attctrl_tau_", attctrl_tau_);
-  // nh_.param<double>("geometric_controller/attctrl_tau_", attctrl_tau_,0.3);
+
+
   nh_.param<int>(agentName+"/pf/agents", numAgents, 4);  
   nh_.param<float>("geometric_controller/radius", radius, 2.5);
   nh_.param<bool>("geometric_controller/obstaclesOn", obstaclesOn, false);
