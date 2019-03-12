@@ -3,3 +3,5 @@ kp: [-3, -3, -10]
 kv: [-3, -3, -10]
 max_fb_acc_: 5.0
 norm_thrust_const_: 0.1
+obstaclesOn: false
+radius: 2.5
