@@ -177,6 +177,15 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   sim = new RVO::RVOSimulator();
     
   wait4Home(); // ensures I have gotten positions from other agents at least
+
+  
+  //if(AGENT_NUMBER==3){ // avoid error sensor calibration for sitl at chpc simulations
+  //ros::Duration(30.0).sleep();
+  //}
+  //else{
+  //ros::Duration(5.0).sleep();
+  //}
+  
   
   setupScenario();
 
@@ -502,7 +511,17 @@ void geometricCtrl::updateCA_velpos(void){
 	  otherVelMarker.color.g = 0.5;
 	  otherVelMarker.color.b = 0.0;
 
-      }      
+      }
+    else{
+      otherAgentMarker.color.r = 1.0;
+      otherAgentMarker.color.g = 1.0;
+      otherAgentMarker.color.b = 0.0;
+	  
+      otherVelMarker.color.r = 1.0;
+      otherVelMarker.color.g = 1.0;
+      otherVelMarker.color.b = 0.0;
+    }
+      
 
 
       agentPos_pub[i].publish(otherAgentMarker);
@@ -555,9 +574,10 @@ void geometricCtrl::wait4Home(void){
       break;
     }
 
-    ROS_INFO_THROTTLE(5,"[ctrl] waiting for pos and vel data from other agents and reference data %d, %d, %d, %d", !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData);
-      
+    ROS_INFO_THROTTLE(1,"[%d ctrl] waiting for pos and vel data from other agents and reference data %d, %d, %d, %d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData);
+    
   } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
+  //} while ((!g_geodetic_converter.isInitialised() || !newRefData) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
 
   newDataFlag=true;
 }
