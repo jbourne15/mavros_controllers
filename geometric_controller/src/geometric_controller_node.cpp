@@ -177,16 +177,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   sim = new RVO::RVOSimulator();
     
   wait4Home(); // ensures I have gotten positions from other agents at least
-
-  
-  //if(AGENT_NUMBER==3){ // avoid error sensor calibration for sitl at chpc simulations
-  //ros::Duration(30.0).sleep();
-  //}
-  //else{
-  //ros::Duration(5.0).sleep();
-  //}
-  
-  
+    
   setupScenario();
 
   targetPos_ << xt(AGENT_NUMBER-1,0), xt(AGENT_NUMBER-1,1), 1;
@@ -567,7 +558,8 @@ void geometricCtrl::wait4Home(void){
       g_geodetic_converter.initialiseReference(H_latitude, H_longitude, H_altitude);
     }    
 
-    ros::Duration(1.0).sleep();
+    nh_.param<std::string>("/runAlg", runAlg, "lawnMower");    
+    ros::Duration(0.01).sleep();
     ros::spinOnce();
 
     if(tuneAtt || tuneRate){
@@ -576,7 +568,7 @@ void geometricCtrl::wait4Home(void){
 
     ROS_INFO_THROTTLE(1,"[%d ctrl] waiting for pos and vel data from other agents and reference data %d, %d, %d, %d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData);
     
-  } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
+  } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData || (runAlg.compare("info")!=0)) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
   //} while ((!g_geodetic_converter.isInitialised() || !newRefData) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
 
   newDataFlag=true;
@@ -952,21 +944,12 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
   //   }
   //   last_request_ = ros::Time::now();
   // }
-    
-  if(sim_enable_ || mode<1100){
-  // if((sim_enable_ || mode<1100) && AGENT_NUMBER!=2){
-
-    if( current_state_.mode != "OFFBOARD" && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
-      offb_set_mode_.request.custom_mode = "OFFBOARD";
-      if( set_mode_client_.call(offb_set_mode_) && offb_set_mode_.response.mode_sent){
-	ROS_INFO("Offboard enabled");
-      }
-      last_request_ = ros::Time::now();
-    }
-
-    
-    // Enable OFFBoard mode and arm automatically
-    if (newDataFlag || tuneAtt || tuneRate){
+  nh_.param<std::string>("/runAlg", runAlg, "lawnMower");
+  
+  if (runAlg.compare("info")==0){
+  if(!sim_enable_){
+    if(mode<1100 && (tuneAtt || tuneRate)){
+      // Enable OFFBoard mode and arm automatically
       arm_cmd_.request.value = true;      
       if( !current_state_.armed && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
 	if( arming_client_.call(arm_cmd_) && arm_cmd_.response.success){
@@ -975,17 +958,37 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	last_request_ = ros::Time::now();
       }
     }
+    else if(mode>1100 && (tuneAtt || tuneRate)){
+      ROS_INFO_THROTTLE(5,"flip remote switch");
+	arm_cmd_.request.value = false;
+	if( current_state_.armed && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
+	  if( arming_client_.call(arm_cmd_) && arm_cmd_.response.success){
+	    ROS_INFO("Vehicle disarmed");
+	  }
+	  last_request_ = ros::Time::now();
+	}
+    }
+    //else{
+      // if i am not tuning then let client handle arming and offboard mode
+    //}
+    
+
   }
   else{
-    ROS_INFO_THROTTLE(5,"flip remote switch");
-    if (mode>1100 && (tuneAtt || tuneRate)){
-      arm_cmd_.request.value = false;
-      if( current_state_.armed && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
-	if( arming_client_.call(arm_cmd_) && arm_cmd_.response.success){
-	  ROS_INFO("Vehicle disarmed");
-	}
-	last_request_ = ros::Time::now();
+    arm_cmd_.request.value = true;      
+    if( !current_state_.armed && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
+      if( arming_client_.call(arm_cmd_) && arm_cmd_.response.success){
+	ROS_INFO("Vehicle armed");
       }
+      last_request_ = ros::Time::now();
+    }
+    
+    if( current_state_.mode != "OFFBOARD" && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
+      offb_set_mode_.request.custom_mode = "OFFBOARD";
+      if( set_mode_client_.call(offb_set_mode_) && offb_set_mode_.response.mode_sent){
+	ROS_INFO("Offboard enabled");
+      }
+      last_request_ = ros::Time::now();
     }
   }
 
@@ -1000,7 +1003,8 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
   } else if(ctrl_mode_ == MODE_BODYTORQUE){
     //TODO: implement actuator commands for mavros
   }
-  ros::spinOnce();
+  //ros::spinOnce();
+  }
 }
 
 void geometricCtrl::mavstateCallback(const mavros_msgs::State::ConstPtr& msg){

@@ -9,6 +9,11 @@ int main(int argc, char** argv) {
   ros::NodeHandle nh_private("~");
 
   geometricCtrl geometricController(nh, nh_private);
-  ros::spin();
+
+  ros::AsyncSpinner spinner(4);
+  spinner.start();
+  std::cout<<"finished starting spinner"<<std::endl;
+  ros::waitForShutdown();
+
   return 0;
 }

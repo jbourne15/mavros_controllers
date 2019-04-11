@@ -114,6 +114,7 @@ class geometricCtrl
     std::vector<Eigen::Vector3d> errorVel_history;
     /* std::vector<Eigen::Vector3d> errorVel_history; */
     int ev_idx;
+    std::string runAlg;
 
     mavros_msgs::State current_state_;
     mavros_msgs::SetMode offb_set_mode_;
