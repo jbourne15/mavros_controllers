@@ -556,8 +556,8 @@ void geometricCtrl::wait4Home(void){
         nh_.getParam("/gps_ref_longitude", H_longitude) &&
         nh_.getParam("/gps_ref_altitude", H_altitude)){
       g_geodetic_converter.initialiseReference(H_latitude, H_longitude, H_altitude);
-    }    
-
+    }
+    
     nh_.param<std::string>("/runAlg", runAlg, "lawnMower");    
     ros::Duration(0.01).sleep();
     ros::spinOnce();
@@ -566,7 +566,7 @@ void geometricCtrl::wait4Home(void){
       break;
     }
 
-    ROS_INFO_THROTTLE(1,"[%d ctrl] waiting for pos and vel data from other agents and reference data %d, %d, %d, %d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData);
+    ROS_INFO_THROTTLE(5,"[%d ctrl] waiting for pos and vel data from other agents and reference data %d, %d, %d, %d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData);
     
   } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData || (runAlg.compare("info")!=0)) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
   //} while ((!g_geodetic_converter.isInitialised() || !newRefData) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
@@ -944,9 +944,10 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
   //   }
   //   last_request_ = ros::Time::now();
   // }
+  
   nh_.param<std::string>("/runAlg", runAlg, "lawnMower");
   
-  if (runAlg.compare("info")==0){
+  if (runAlg.compare("info")==0 && newDataFlag){
   if(!sim_enable_){
     if(mode<1100 && (tuneAtt || tuneRate)){
       // Enable OFFBoard mode and arm automatically

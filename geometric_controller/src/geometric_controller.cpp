@@ -10,6 +10,8 @@ int main(int argc, char** argv) {
 
   geometricCtrl geometricController(nh, nh_private);
 
+  ros::spin();
+  
   ros::AsyncSpinner spinner(4);
   spinner.start();
   std::cout<<"finished starting spinner"<<std::endl;
