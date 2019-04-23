@@ -615,8 +615,8 @@ void geometricCtrl::setupScenario(void) {
   std::vector<std::vector<RVO::Vector2>> obstacles;
   // obstacles.resize(3);
 
-  std::vector<RVO::Vector2> obstacle1, obstacle2, obstacle3, obstacle4;
-
+  /*
+    std::vector<RVO::Vector2> obstacle1, obstacle2, obstacle3, obstacle4;
   // must be counterclockwise or will fail!!!
   obstacle1.push_back(RVO::Vector2(0.0f, 15.0f));
   obstacle1.push_back(RVO::Vector2(5.0f, 25.0f));
@@ -637,7 +637,76 @@ void geometricCtrl::setupScenario(void) {
   obstacle3.push_back(RVO::Vector2(5.0f, -25.0f));
   
   obstacles.push_back(obstacle3);
+  */
 
+  std::vector<double> tNoise; // target noise assumption
+  nh_.getParam(agentName+"/pf/t_noise", tNoise);
+  int targetStates = tNoise.size(); // number of states
+
+  SS.set_size(targetStates,2);
+
+  nh_.setParam("/boxXmin", SS(0,0));
+  nh_.setParam("/boxXmax", SS(0,1));    
+  nh_.setParam("/boxYmin", SS(1,0));
+  nh_.setParam("/boxYmax", SS(1,1));
+  
+  std::vector<double> minT, maxT;
+  nh_.getParam(agentName+"/pf/minT", minT);
+  nh_.getParam(agentName+"/pf/maxT", maxT);
+                   
+  dlib::matrix<double> tp0, tp1;
+  tp0.set_size(targetStates,1);
+  tp1.set_size(targetStates,1); 
+  // dlib::matrix<double,targetStates,1> tp0, tp1;
+    	
+  // =    x    ,    y   ,      z     ,  Q ,  V ,       A          , Dy,     Dz or tau
+  tp0 = minT[0],minT[1],minT[2],minT[3],minT[4],minT[5]*M_PI/180.0,minT[6],minT[7];    
+  tp1 = maxT[0],maxT[1],maxT[2],maxT[3],maxT[4],maxT[5]*M_PI/180.0,maxT[6],maxT[7];
+
+  dlib::set_colm(SS,0)=tp0;
+  dlib::set_colm(SS,1)=tp1;
+
+  std::vector<RVO::Vector2> obstacle;
+  int buffer=5;
+  int width=1;
+
+  // counterclockwise:
+
+  // bottom
+  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,0)-buffer));
+  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,0)-buffer-width));
+  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,0)-buffer-width));
+  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,0)-buffer));
+
+  obstacles.push_back(obstacle);
+  obstacle.clear();
+
+  // left
+  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,0)-buffer));
+  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,1)+buffer));
+  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer-width, SS(1,1)+buffer));
+  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer-width, SS(1,0)-buffer));
+
+  obstacles.push_back(obstacle);
+  obstacle.clear();
+
+  // right
+  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,0)-buffer));
+  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,1)+buffer));
+  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer+width, SS(1,1)+buffer));
+  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer+width, SS(1,0)-buffer));
+
+  obstacles.push_back(obstacle);
+  obstacle.clear();
+
+  // top
+  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,1)+buffer));
+  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,1)+buffer));
+  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,1)+buffer+width));
+  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,1)+buffer+width));
+  
+  obstacles.push_back(obstacle);
+  
   
   visualization_msgs::Marker obstacleMsg;
   obstacleMsg.header.frame_id = "/world";
@@ -946,8 +1015,8 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
   // }
   
   nh_.param<std::string>("/runAlg", runAlg, "lawnMower");
-  
-  if (runAlg.compare("info")==0 && newDataFlag){
+    
+  if (runAlg.compare("info")==0 && g_geodetic_converter.isInitialised() && std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;}) && std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;}) && newRefData){
   if(!sim_enable_){
     if(mode<1100 && (tuneAtt || tuneRate)){
       // Enable OFFBoard mode and arm automatically

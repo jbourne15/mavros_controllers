@@ -173,6 +173,7 @@ class geometricCtrl
     geodetic_converter::GeodeticConverter g_geodetic_converter;
     double H_latitude,H_longitude,H_altitude;
     dlib::matrix<double> xt, vt;
+    dlib::matrix<double> SS;      // state space of the target states.
     double v_max;    
     std::vector<RVO::Vector2> goals;
     geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& nh_private);
