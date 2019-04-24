@@ -130,13 +130,17 @@ class geometricCtrl
     Eigen::Vector3d goalPos_, targetPos_, targetVel_, targetAcc_, targetJerk_, targetSnap_, targetPos_prev_, targetVel_prev_, targetCA_vel, targetCA_pos, targetPos_noCA, targetVel_noCA, targetAcc_noCA, targetPos_noCA_prev_, targetVel_noCA_prev_;
     Eigen::Vector3d mavPos_, mavVel_, mavRate_;
     double mavYaw_;
-    Eigen::Vector3d a_des, a_fb, a_ref, a_rd, g_, a_des_filtered;
+    Eigen::Vector3d a_des, a_fb, a_ref, a_rd, g_, a_des_filtered, action_int_;
     std::vector<Eigen::Vector3d> a_des_history;
     int ades_idx;
-    
+        
     Eigen::Vector4d mavAtt_, q_ref, q_des;
     Eigen::Vector4d cmdBodyRate_; //{wx, wy, wz, Thrust}
-    Eigen::Vector3d Kpos_, Kvel_, D_, Kpos_noCA_;
+    Eigen::Vector3d Kpos_, Kvel_, D_, Kpos_noCA_, Kint_;
+    Eigen::Vector3d errorSum_;
+    
+    RVO::Vector2 errorsumOri_;
+    RVO::Vector2 desVel;
 
     RVO::RVOSimulator* sim;
 

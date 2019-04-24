@@ -26,7 +26,8 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   g_ << 0.0, 0.0, -9.8;
   Kpos_ << -3.0, -3.0, -60.0;
   Kvel_ << -3.0, -3.0, -60.0;
-  std::vector<double> kp, kv;
+  Kint_ << -3.0, -3.0, -60.0;
+  std::vector<double> kp, kv, ki;
 
   nh_.getParam("geometric_controller/kp", kp);
   Kpos_<<kp[0],kp[1],kp[2];
@@ -34,8 +35,13 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.getParam("geometric_controller/kv", kv);
   Kvel_<<kv[0],kv[1],kv[2];
 
+  nh_.getParam("geometric_controller/ki", ki);
+  Kint_<<ki[0],ki[1],ki[2];
+
 
   D_ << 0.0, 0.0, 0.0;
+  errorSum_ << 0.0, 0.0, 0.0;
+  errorsumOri_ = RVO::Vector2(0.0,0.0);
   // attctrl_tau_ = 0.15; //0.2;
   // attctrl_tau_ << 0.20, 0.20, .2;
   attctrl_tau_.resize(3);
@@ -196,9 +202,13 @@ void geometricCtrl::updateAgents(void) {
   for(int i=0; i<numAgents; i++){
     if (i==(AGENT_NUMBER-1)){
 
-      RVO::Vector2 desVel;
+
+      //errorsumOri_ = errorsumOri_+(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1)));
 
       desVel = 2*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + 0.5*RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
+      
+      //desVel = 3*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + 1/3.0*(RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1))- RVO::Vector2(mavVel_(0),mavVel_(1)));      
+      //desVel = RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
 
       sim->setAgentPrefVelocity(i, desVel);
       // sim->setAgentPrefVelocity(i, RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1)));      
@@ -319,7 +329,6 @@ void geometricCtrl::updateCA_velpos(void){
   //   avoiding=false;
   //   timeFlag=false;
   // }
-
 
   targetPos_ = targetPos_CA;
   targetVel_ = targetVel_CA;
@@ -1016,7 +1025,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
   
   nh_.param<std::string>("/runAlg", runAlg, "lawnMower");
     
-  if (runAlg.compare("info")==0 && g_geodetic_converter.isInitialised() && std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;}) && std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;}) && newRefData){
+  if (runAlg.compare("info")==0 && g_geodetic_converter.isInitialised() && !std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) && !std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) && newRefData){
   if(!sim_enable_){
     if(mode<1100 && (tuneAtt || tuneRate)){
       // Enable OFFBoard mode and arm automatically
@@ -1044,7 +1053,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
     
 
   }
-  else{
+  else{ // i am simulating
     arm_cmd_.request.value = true;      
     if( !current_state_.armed && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
       if( arming_client_.call(arm_cmd_) && arm_cmd_.response.success){
@@ -1073,7 +1082,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
   } else if(ctrl_mode_ == MODE_BODYTORQUE){
     //TODO: implement actuator commands for mavros
   }
-  //ros::spinOnce();
+  ros::spinOnce();
   }
 }
 
@@ -1094,6 +1103,9 @@ void geometricCtrl::pubReferencePose(){
   // referencePoseMsg_.pose.position.x = targetPos_(0);
   // referencePoseMsg_.pose.position.y = targetPos_(1);
   // referencePoseMsg_.pose.position.z = targetPos_(2);
+  //referencePoseMsg_.pose.position.x = desVel.x();
+  //referencePoseMsg_.pose.position.y = desVel.y();
+
 
   referencePoseMsg_.pose.orientation.w = q_des(0);
   referencePoseMsg_.pose.orientation.x = q_des(1);
@@ -1183,7 +1195,16 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     Eigen::Matrix3d R_ref;
 
     errorPos_   = mavPos_ - targetPos_;
-    errorVel_   = mavVel_ - targetVel_;
+    errorVel_   = mavVel_ - targetVel_;    
+    errorSum_  += errorPos_;    
+        
+    action_int_ = (Kint_.asDiagonal()*errorSum_);
+    if (action_int_.norm()>max_fb_acc_){
+      action_int_=(max_fb_acc_/ action_int_.norm())*action_int_;
+    }
+    if ((-action_int_.norm())<(-max_fb_acc_)){
+      action_int_=-(max_fb_acc_ / action_int_.norm())*action_int_;
+    }
 
     // errorVel_history[ev_idx]=errorVel_;
 
@@ -1196,7 +1217,7 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     /// Controller based on Faessler 2017
     q_ref = acc2quaternion(a_ref - g_, mavYaw_);
     R_ref = quat2RotMatrix(q_ref);
-    a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_; //feedforward term for trajectory error
+    a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_ + action_int_; //feedforward term for trajectory error
     // if(a_fb(2) < -max_fb_acc_) a_fb(2) = -max_fb_acc_;
     if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;    
     
