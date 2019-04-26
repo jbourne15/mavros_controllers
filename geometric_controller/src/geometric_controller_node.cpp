@@ -614,7 +614,7 @@ void geometricCtrl::setupScenario(void) {
   sim->setTimeStep(.01f);
   
   // neighborDist,maxNeighbors,timeHorizon,timeHorizonObst,radius,maxSpeed,    
-  sim->setAgentDefaults(30.0f, numAgents*2, 5.0f, 2.5f, radius, 1.0*v_max);
+  sim->setAgentDefaults(30.0f, numAgents*2, 5.0f, 2.5f, radius, 1.5*v_max);
 
   for (int i=0;i<numAgents; i++){
     sim->addAgent(RVO::Vector2(xt(i,0), xt(i,1)));
@@ -1120,6 +1120,10 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
   } else if(ctrl_mode_ == MODE_BODYRATE){
 
     if (quadMode==1){
+      quadMode=2;
+      holdPos_ = mavPos_;
+      holdPos_(2)=0.0;
+      /*
       a_des<<0,0,1;      
       q_des = acc2quaternion(a_des, mavYaw_);
       cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
@@ -1128,12 +1132,19 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	quadMode=2;
 	holdPos_ = mavPos_;
       }
+      */
       // ROS_INFO("%d taking off, %f", quadMode, mavPos_(2));	
     }
 
     if (quadMode==2){      
       Eigen::Vector3d errorPos_, errorVel_, errorPos_noCA, errorVel_filtered;
       Eigen::Matrix3d R_ref;
+      if(current_state_.mode.compare("OFFBOARD")==0 && current_state_.armed){
+	holdPos_(2)+=0.0025;
+	if (holdPos_(2)>0.75){
+	  holdPos_(2)=0.75;
+	}
+      }
 
       errorPos_   = mavPos_ - holdPos_;
       errorVel_   = mavVel_;    
@@ -1158,7 +1169,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
       q_des = acc2quaternion(a_des, mavYaw_);
       cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
 
-      if ((targetPos_-mavPos_).norm() < .05 || ((mavPos_-holdPos_).norm()<0.05 && mavVel_.norm()<.1)){
+      if (((targetPos_-mavPos_).norm() < .05 || ((mavPos_-holdPos_).norm()<0.05 && mavVel_.norm()<.25)) && holdPos_(2)==0.75){
         quadMode=3;
       }
       else{
