@@ -1158,8 +1158,11 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
       q_des = acc2quaternion(a_des, mavYaw_);
       cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
 
-      if ((targetPos_-mavPos_).norm() < .005){
+      if ((targetPos_-mavPos_).norm() < .05 || ((mavPos_-holdPos_).norm()<0.05 && mavVel_.norm()<.1)){
         quadMode=3;
+      }
+      else{
+	ROS_INFO_THROTTLE(1,"waiting until quad is still");
       }
       // ROS_INFO("%d holding pos %f,%f,%f", quadMode, holdPos_(0), holdPos_(1), holdPos_(2));	
     }
@@ -1319,8 +1322,8 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     a_rd = R_ref * D_.asDiagonal() * R_ref.transpose() * targetVel_; //Rotor drag
     // a_des = a_fb + a_ref - a_rd - g_;
     a_des = a_fb + a_ref - g_;
-
-
+    
+    
     // a_des_history[ades_idx]=a_des;    
 
     // a_des_filtered = std::accumulate(a_des_history.begin(), a_des_history.end(), Eigen::Vector3d(0,0,0)) / a_des_history.size();
