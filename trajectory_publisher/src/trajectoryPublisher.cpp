@@ -16,6 +16,12 @@ trajectoryPublisher::trajectoryPublisher(const ros::NodeHandle& nh, const ros::N
   trajectoryPub_ = nh_.advertise<nav_msgs::Path>("reference/trajectory", 1);
   referencePub_ = nh_.advertise<geometry_msgs::TwistStamped>("reference/setpoint", 1);
   markers_pub = nh_.advertise<visualization_msgs::MarkerArray>("trajectory", 1);
+
+  agentName = ros::this_node::getNamespace();  
+  agentName.erase(0,1);
+
+  local_sub   = nh_.subscribe(agentName+"/gps_pose", 1, &trajectoryPublisher::localCallback, this, ros::TransportHints().tcpNoDelay()); // from geodetic
+  state_sub   = nh_.subscribe(agentName+"/mavros/state", 1, &trajectoryPublisher::stateCallback, this, ros::TransportHints().tcpNoDelay());
   
   trajloop_timer_ = nh_.createTimer(ros::Duration(1), &trajectoryPublisher::loopCallback, this);
   refloop_timer_ = nh_.createTimer(ros::Duration(0.01), &trajectoryPublisher::refCallback, this);
@@ -47,6 +53,25 @@ trajectoryPublisher::trajectoryPublisher(const ros::NodeHandle& nh, const ros::N
   //<param name="marker_scale" value="6" type="double"/>
   
   setTrajectory(target_trajectoryID_);
+}
+
+void trajectoryPublisher::localCallback(const geometry_msgs::PoseWithCovarianceStamped &msg){
+  if (std::isfinite(msg.pose.pose.position.x) && std::isfinite(msg.pose.pose.position.y) && std::isfinite(msg.pose.pose.position.z)){
+    mavPos_(0) = msg.pose.pose.position.x;
+    mavPos_(1) = msg.pose.pose.position.y;
+    mavPos_(2) = msg.pose.pose.position.z;
+    mavAtt_(0) = msg.pose.pose.orientation.w;
+    mavAtt_(1) = msg.pose.pose.orientation.x;
+    mavAtt_(2) = msg.pose.pose.orientation.y;	    
+    mavAtt_(3) = msg.pose.pose.orientation.z;
+  }
+  else{
+    std::cout<<"xt is not finite!!!"<<std::endl;
+  }
+}
+
+void trajectoryPublisher::stateCallback(const mavros_msgs::State &msg){
+  state = msg;
 }
 
 void trajectoryPublisher::setTrajectory(int ID) {
@@ -98,7 +123,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
   mav_trajectory_generation::Vertex::Vector vertices;
   mav_trajectory_generation::Vertex start(dimension), middle(dimension), middle2(dimension), middle3(dimension), middle4(dimension), middle5(dimension), end(dimension);
 
-  start.makeStartOrEnd(Eigen::Vector3d(0,0,1), derivative_to_optimize);
+  start.makeStartOrEnd(Eigen::Vector3d(mavPos_(0),mavPos_(1),mavPos_(2)), derivative_to_optimize);
 
    // type: position  value: [14.55, 67.83, 2.262]
    // type: velocity  value: [ 0.2373,    2.01, 0.01177]
@@ -116,29 +141,29 @@ void trajectoryPublisher::getPolyTrajectory(void){
    
   // constraints: 
   // type: position  value: [43.87, 4.859, 1.889]
-  middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(1, 2, 1));
+  middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(1, 1, 1));
   vertices.push_back(middle);
 
   // constraints: 
   // type: position  value: [16.72, 66.54, 1.914]
-  middle2.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-1,2,1));
+  middle2.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-1,1,1));
   vertices.push_back(middle2);
 
   // constraints: 
   // type: position  value: [25.03, 94.59, 1.969]
-  middle3.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-1,-2,1));
+  middle3.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(-1,-1,1));
   vertices.push_back(middle3);
 
    // constraints: 
    // type: position  value: [6.449, 78.12, 1.995]
-  middle4.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(1,-2,1));
+  middle4.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(1,-1,1));
   vertices.push_back(middle4);
 
    // constraints: 
    // type: position  value: [43.32, 81.49, 2.144]
-  middle5.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(0,0,1));
-  vertices.push_back(middle5);
 
+  end.makeStartOrEnd(Eigen::Vector3d(mavPos_(0),mavPos_(1),1), derivative_to_optimize);
+  vertices.push_back(end);
   
   
   // end.makeStartOrEnd(Eigen::Vector3d(0,0,2), derivative_to_optimize);
@@ -203,8 +228,6 @@ void trajectoryPublisher::getPolyTrajectory(void){
     // mav_trajectory_generation::NonlinearOptimizationParameters::kMellingerOuterLoop;
   
   // 3. Create an optimizer object and solve. The third argument of the optimization object (true/false) specifies whether the optimization is run over the segment times only.
-
-  std::cout<<"leoo"<<std::endl;
 
   const int Nnl = 10;
   mav_trajectory_generation::PolynomialOptimizationNonLinear<Nnl> nlOpt(this->dimension, parameters);
@@ -368,6 +391,11 @@ void trajectoryPublisher::setTrajectoryTheta(double in) {
 
 void trajectoryPublisher::moveReference() {
   curr_time_ = ros::Time::now();
+
+  if (state.mode.compare("OFFBOARD")!=0 || !state.armed){
+    start_time_ = ros::Time::now();
+  }
+  
   trigger_time_ = (curr_time_ - start_time_).toSec();
 
   // std::cout<<"mode: "<<mode_<<std::endl;

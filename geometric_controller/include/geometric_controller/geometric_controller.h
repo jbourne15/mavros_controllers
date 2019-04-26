@@ -36,6 +36,7 @@
 #include <std_srvs/SetBool.h>
 #include <gazebo_msgs/ModelStates.h>
 #include <mavros_msgs/SetMavFrame.h>
+#include "geometry_msgs/PoseWithCovarianceStamped.h"
 
 #include <RVO.h>
 #include <dlib/matrix.h>
@@ -64,7 +65,7 @@ class geometricCtrl
 
     ros::Subscriber keybrdSub_;
     ros::Subscriber mavstateSub_;
-    ros::Subscriber mavposeSub_, gzmavposeSub_;
+    ros::Subscriber mavposeSub_, gzmavposeSub_, local_sub;
     ros::Subscriber mavtwistSub_;
     ros::Subscriber rcSub_;  
     ros::Publisher rotorVelPub_, angularVelPub_;
@@ -103,12 +104,13 @@ class geometricCtrl
     /* double attctrl_tau_; */
     //Eigen::Vector3d attctrl_tau_;
     double norm_thrust_const_;
-    double max_fb_acc_;
+    double max_fb_acc_, max_rollRate, max_pitchRate, max_yawRate, max_rollPitch, takeOffThrust;
     float radius;
     mavros_msgs::SetMavFrame mav_frame;
     std::vector<bool> newPosData, newVelData;
-    bool newRefData, avoidAgents, newDataFlag;
+    bool newRefData, avoidAgents, newDataFlag;    
     int numAgents;
+    int quadMode;
     geometry_msgs::TwistStamped b_msg;
 
     std::vector<Eigen::Vector3d> errorVel_history;
@@ -128,7 +130,7 @@ class geometricCtrl
     std::vector<Eigen::Vector3d> targetPos_history, targetVel_history;
     
     Eigen::Vector3d goalPos_, targetPos_, targetVel_, targetAcc_, targetJerk_, targetSnap_, targetPos_prev_, targetVel_prev_, targetCA_vel, targetCA_pos, targetPos_noCA, targetVel_noCA, targetAcc_noCA, targetPos_noCA_prev_, targetVel_noCA_prev_;
-    Eigen::Vector3d mavPos_, mavVel_, mavRate_;
+    Eigen::Vector3d mavPos_, mavVel_, mavRate_, holdPos_;
     double mavYaw_;
     Eigen::Vector3d a_des, a_fb, a_ref, a_rd, g_, a_des_filtered, action_int_;
     std::vector<Eigen::Vector3d> a_des_history;
@@ -147,6 +149,7 @@ class geometricCtrl
     void pubMotorCommands();
     void pubRateCommands();
     void pubReferencePose();
+    void localCallback(const geometry_msgs::PoseWithCovarianceStamped &msg);
     void odomCallback(const nav_msgs::OdometryConstPtr& odomMsg);
     void rc_command_callback(const mavros_msgs::RCIn::ConstPtr &new_message);
     void targetCallback(const geometry_msgs::TwistStamped& msg);

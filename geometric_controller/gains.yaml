@@ -1,8 +1,11 @@
 attctrl_tau_: [.3, .3, .3]
 kp: [-9, -9, -15]
 kv: [-3, -3, -10]
-ki: [-0.0, -0.0, -0.001]
+ki: [-0.0, -0.0, -1]
 max_fb_acc_: 5.0
-norm_thrust_const_: 0.1
+norm_thrust_const_: 0.05
 obstaclesOn: false
 radius: 2.5
+max_rollRate: .5
+max_pitchRate: .5
+max_yawRate: .5

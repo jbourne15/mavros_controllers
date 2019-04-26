@@ -17,6 +17,8 @@
 #include <mav_trajectory_generation_ros/feasibility_analytic.h>
 #include <mav_trajectory_generation_ros/feasibility_base.h>
 #include <mav_trajectory_generation_ros/input_constraints.h>
+#include "geometry_msgs/PoseWithCovarianceStamped.h"
+#include <mavros_msgs/State.h>
 
 #include <stdio.h>
 #include <cstdlib>
@@ -41,9 +43,10 @@ class trajectoryPublisher
 private:
   ros::NodeHandle nh_;
   ros::NodeHandle nh_private_;
+  ros::Subscriber local_sub, state_sub;
   ros::Publisher trajectoryPub_;
   ros::Publisher referencePub_;
-  ros::Publisher markers_pub; 
+  ros::Publisher markers_pub;
   ros::ServiceServer trajtriggerServ_;
   ros::Timer trajloop_timer_;
   ros::Timer refloop_timer_;
@@ -57,12 +60,16 @@ private:
   Eigen::Vector3d target_initpos;
   Eigen::Vector3d traj_axis_;
   Eigen::Vector3d p_targ, v_targ;
+  Eigen::Vector3d mavPos_;
+  Eigen::Vector4d mavAtt_;
+  std::string agentName;
   double traj_radius_, traj_omega_;
   double theta_ = 0.0;
   double controlUpdate_dt_;
   double trigger_time_;
   double init_pos_x_, init_pos_y_, init_pos_z_;
   int target_trajectoryID_;
+  mavros_msgs::State state;
 
   trajectory motionPrimitives_;
 
@@ -84,6 +91,8 @@ public:
   void moveReference();
   void pubrefTrajectory();
   void pubrefState();
+  void stateCallback(const mavros_msgs::State &msg);
+  void localCallback(const geometry_msgs::PoseWithCovarianceStamped &msg);
   geometry_msgs::PoseStamped vector3d2PoseStampedMsg(Eigen::Vector3d position, Eigen::Vector4d orientation);
   Eigen::Vector3d getTargetPosition();
   void loopCallback(const ros::TimerEvent& event);

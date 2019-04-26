@@ -20,7 +20,8 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   /// Target State is the reference state received from the trajectory
   /// goalState is the goal the controller is trying to reach
   // goalPos_ << 2*(AGENT_NUMBER-1), 0.0, 1.5; //Initial Position // needs check so that my quads don't freak out
-  
+
+  quadMode=1;
   targetVel_ << 0.0, 0.0, 0.0;
   mavYaw_ = M_PI/2.0;
   g_ << 0.0, 0.0, -9.8;
@@ -35,9 +36,10 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.getParam("geometric_controller/kv", kv);
   Kvel_<<kv[0],kv[1],kv[2];
 
-  nh_.getParam("geometric_controller/ki", ki);
+  nh_.getParam("geometric_controller/ki", ki);  
   Kint_<<ki[0],ki[1],ki[2];
 
+  nh_.param<double>("geometric_controller/takeOffThrust", takeOffThrust, .60);
 
   D_ << 0.0, 0.0, 0.0;
   errorSum_ << 0.0, 0.0, 0.0;
@@ -52,6 +54,9 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
   nh_.param<double>("geometric_controller/norm_thrust_const_", norm_thrust_const_, 0.1);
   nh_.param<double>("geometric_controller/max_fb_acc_", max_fb_acc_, 5.0);
+  nh_.param<double>("geometric_controller/max_rollRate", max_rollRate, 10);
+  nh_.param<double>("geometric_controller/max_pitchRate", max_pitchRate, 10);
+  nh_.param<double>("geometric_controller/max_yawRate", max_yawRate, 10);
 
   use_gzstates_ = false;
 
@@ -125,7 +130,8 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
     mavposeSub_ = nh_.subscribe(agentName+"/mavros/local_position/pose", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
   }
   else{  
-    mavposeSub_ = nh_.subscribe(agentName+"/local_position", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
+    // mavposeSub_ = nh_.subscribe(agentName+"/local_position", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
+    local_sub   = nh_.subscribe(agentName+"/gps_pose", 1, &geometricCtrl::localCallback, this, ros::TransportHints().tcpNoDelay()); // from geodetic
     // mavposeSub_ = nh_.subscribe(agentName+"/mavros/local_position/pose", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
   }
 
@@ -608,7 +614,7 @@ void geometricCtrl::setupScenario(void) {
   sim->setTimeStep(.01f);
   
   // neighborDist,maxNeighbors,timeHorizon,timeHorizonObst,radius,maxSpeed,    
-  sim->setAgentDefaults(30.0f, numAgents*2, 5.0f, 2.5f, radius, 1.5*v_max);
+  sim->setAgentDefaults(30.0f, numAgents*2, 5.0f, 2.5f, radius, 1.0*v_max);
 
   for (int i=0;i<numAgents; i++){
     sim->addAgent(RVO::Vector2(xt(i,0), xt(i,1)));
@@ -940,6 +946,43 @@ void geometricCtrl::flattargetCallback(const controller_msgs::FlatTarget& msg) {
   }
 }
 
+void geometricCtrl::localCallback(const geometry_msgs::PoseWithCovarianceStamped &msg){
+  if (std::isfinite(msg.pose.pose.position.x) && std::isfinite(msg.pose.pose.position.y) && std::isfinite(msg.pose.pose.position.z)){
+    mavPos_(0) = msg.pose.pose.position.x;
+    mavPos_(1) = msg.pose.pose.position.y;
+    mavPos_(2) = msg.pose.pose.position.z;
+    mavAtt_(0) = msg.pose.pose.orientation.w;
+    mavAtt_(1) = msg.pose.pose.orientation.x;
+    mavAtt_(2) = msg.pose.pose.orientation.y;	    
+    mavAtt_(3) = msg.pose.pose.orientation.z;
+
+    if (tuneAtt){ 
+      tf::Quaternion qc(mavAtt_(1), mavAtt_(2), mavAtt_(3), mavAtt_(0)), qnew;
+      
+      tf::Matrix3x3 mc(qc);      
+      double rollC, pitchC, yawC;
+      mc.getRPY(rollC, pitchC, yawC);
+      //mavYaw_=yawC;
+      mc.setRPY(rollC,pitchC,mavYaw_); // SET the yaw to be desired!!!
+      mc.getRotation(qnew);      
+      mavAtt_(0) = qnew.w();
+      mavAtt_(1) = qnew.x();
+      mavAtt_(2) = qnew.y();
+      mavAtt_(3) = qnew.z();
+    }
+    //    */
+    
+    newPosData[AGENT_NUMBER-1]=true;
+    xt(AGENT_NUMBER-1,0) = mavPos_(0);
+    xt(AGENT_NUMBER-1,1) = mavPos_(1);
+    xt(AGENT_NUMBER-1,2) = mavPos_(2);
+  }
+  else{
+    std::cout<<"xt is not finite!!!"<<std::endl;
+  }
+}
+
+
 void geometricCtrl::mavposeCallback(const geometry_msgs::PoseStamped& msg){
   if(!use_gzstates_){
     mavPos_(0) = msg.pose.position.x;
@@ -1075,9 +1118,58 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
   if(ctrl_mode_ == MODE_ROTORTHRUST){
     //TODO: Compute Thrust commands
   } else if(ctrl_mode_ == MODE_BODYRATE){
+
+    if (quadMode==1){
+      a_des<<0,0,1;      
+      q_des = acc2quaternion(a_des, mavYaw_);
+      cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
+      cmdBodyRate_(3)=takeOffThrust;
+      if (mavPos_(2)>0.5){
+	quadMode=2;
+	holdPos_ = mavPos_;
+      }
+      // ROS_INFO("%d taking off, %f", quadMode, mavPos_(2));	
+    }
+
+    if (quadMode==2){      
+      Eigen::Vector3d errorPos_, errorVel_, errorPos_noCA, errorVel_filtered;
+      Eigen::Matrix3d R_ref;
+
+      errorPos_   = mavPos_ - holdPos_;
+      errorVel_   = mavVel_;    
+      errorSum_  += errorPos_;    
+        
+      action_int_ = (Kint_.asDiagonal()*errorSum_);
+      if (action_int_.norm()>max_fb_acc_){
+	action_int_=(max_fb_acc_/ action_int_.norm())*action_int_;
+      }
+      if ((-action_int_.norm())<(-max_fb_acc_)){
+	action_int_=-(max_fb_acc_ / action_int_.norm())*action_int_;
+      }
+        
+      /// Compute BodyRate commands using differential flatness
+      /// Controller based on Faessler 2017
+      a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_ + action_int_; //feedforward term for trajectory error
+      // if(a_fb(2) < -max_fb_acc_) a_fb(2) = -max_fb_acc_;
+      if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;    
+    
+      a_des = a_fb - g_;
+    
+      q_des = acc2quaternion(a_des, mavYaw_);
+      cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
+
+      if ((targetPos_-mavPos_).norm() < .005){
+        quadMode=3;
+      }
+      // ROS_INFO("%d holding pos %f,%f,%f", quadMode, holdPos_(0), holdPos_(1), holdPos_(2));	
+    }
+    
+    if(quadMode==3){
       computeBodyRateCmd(false);
-      pubReferencePose();
-      pubRateCommands();
+    }
+    
+    pubReferencePose();
+    pubRateCommands();
 	
   } else if(ctrl_mode_ == MODE_BODYTORQUE){
     //TODO: implement actuator commands for mavros
@@ -1087,7 +1179,10 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 }
 
 void geometricCtrl::mavstateCallback(const mavros_msgs::State::ConstPtr& msg){
-    current_state_ = *msg;
+  current_state_ = *msg;
+  if (current_state_.mode.compare("OFFBOARD")!=0 || !current_state_.armed){
+    quadMode=1;
+  }    
 }
 
 void geometricCtrl::statusloopCallback(const ros::TimerEvent& event){
@@ -1414,11 +1509,49 @@ Eigen::Vector4d geometricCtrl::attcontroller(Eigen::Vector4d &ref_att, Eigen::Ve
   errorQ.quaternion.z = qe(3);
   
   error_attPub_.publish(errorQ);
-      
-  ratecmd(0) = (2.0 / attctrl_tau_[0]) * std::copysign(1.0, qe(0)) * qe(1);
-  ratecmd(1) = (2.0 / attctrl_tau_[1]) * std::copysign(1.0, qe(0)) * qe(2);
-  ratecmd(2) = (2.0 / attctrl_tau_[2]) * std::copysign(1.0, qe(0)) * qe(3);
-  rotmat = quat2RotMatrix(mavAtt_);
+
+  double rollRate, pitchRate, yawRate;
+
+  rollRate=(2.0 / attctrl_tau_[0]) * std::copysign(1.0, qe(0)) * qe(1);
+  pitchRate=(2.0 / attctrl_tau_[1]) * std::copysign(1.0, qe(0)) * qe(2);
+  yawRate=(2.0 / attctrl_tau_[2]) * std::copysign(1.0, qe(0)) * qe(3);
+
+  // ratecmd(0) = std::clamp(rollRate,-max_rollRate, max_rollRate);
+  // ratecmd(1) = std::clamp(pitchRate,-max_pitchRate, max_pitchRate);
+  // ratecmd(2) = std::clamp(yawRate,-max_yawRate, max_yawRate);
+  if (rollRate>max_rollRate){
+    ratecmd(0) = max_rollRate;
+  }
+  else if (rollRate<(-max_rollRate)){
+    ratecmd(0) = -max_rollRate;
+  }
+  else{
+    ratecmd(0)=rollRate;
+  }
+
+  if (pitchRate>max_pitchRate){
+    ratecmd(1) = max_pitchRate;
+  }
+  else if (pitchRate<(-max_pitchRate)){
+    ratecmd(1) = -max_pitchRate;
+  }
+  else{
+    ratecmd(1)=pitchRate;
+  }
+
+  if (yawRate>max_yawRate){
+    ratecmd(2) = max_yawRate;
+  }
+  else if (yawRate<(-max_yawRate)){
+    ratecmd(2) = -max_yawRate;
+  }
+  else{
+    ratecmd(2)=yawRate;
+  }
+
+
+  
+  rotmat = quat2RotMatrix(curr_att);
   zb = rotmat.col(2);
   // ratecmd(3) = std::max(0.0, std::min(1.0, norm_thrust_const_ * ref_acc.dot(zb))); //Calculate thrust
   ratecmd(3) = std::max(0.0, norm_thrust_const_ * ref_acc.dot(zb)); //Calculate thrust
