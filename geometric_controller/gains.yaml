@@ -1,9 +1,12 @@
-attctrl_tau_: [.3, .3, .3]
-kp: [-9, -9, -15]
-kv: [-3, -3, -10]
-ki: [-0.0, -0.0, -1]
+attctrl_tau_p: [.3, .3, .3]
+attctrl_tau_i: [100, 100, 100]
+attctrl_tau_d: [.1, .1, .1] # not used
+kp: [-9, -9, -6]
+kv: [-3, -3, -4]
+ki: [-0, -0, -.6]
+max_tau_i: 5.0
 max_fb_acc_: 5.0
-norm_thrust_const_: 0.05
+norm_thrust_const_: 0.0575
 obstaclesOn: false
 radius: 2.5
 max_rollRate: .5

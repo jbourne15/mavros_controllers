@@ -41,17 +41,21 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
   nh_.param<double>("geometric_controller/takeOffThrust", takeOffThrust, .60);
 
+  sumAtt <<0,0,0;
+  
   D_ << 0.0, 0.0, 0.0;
   errorSum_ << 0.0, 0.0, 0.0;
   errorsumOri_ = RVO::Vector2(0.0,0.0);
-  // attctrl_tau_ = 0.15; //0.2;
-  // attctrl_tau_ << 0.20, 0.20, .2;
-  attctrl_tau_.resize(3);
-  attctrl_tau_[0] = 0.3;
-  attctrl_tau_[1] = 0.3;
-  attctrl_tau_[2] = 0.3;
-  nh_.getParam("geometric_controller/attctrl_tau_", attctrl_tau_);
+  
+  attctrl_tau_p.resize(3);
+  attctrl_tau_d.resize(3);
+  attctrl_tau_i.resize(3);
+  
+  nh_.getParam("geometric_controller/attctrl_tau_p", attctrl_tau_p);
+  nh_.getParam("geometric_controller/attctrl_tau_i", attctrl_tau_i);
+  nh_.getParam("geometric_controller/attctrl_tau_d", attctrl_tau_d);
 
+  nh_.param<double>("geometric_controller/max_tau_i", max_tau_i, 0.5);
   nh_.param<double>("geometric_controller/norm_thrust_const_", norm_thrust_const_, 0.1);
   nh_.param<double>("geometric_controller/max_fb_acc_", max_fb_acc_, 5.0);
   nh_.param<double>("geometric_controller/max_rollRate", max_rollRate, 10);
@@ -1140,7 +1144,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
       Eigen::Vector3d errorPos_, errorVel_, errorPos_noCA, errorVel_filtered;
       Eigen::Matrix3d R_ref;
       if(current_state_.mode.compare("OFFBOARD")==0 && current_state_.armed){
-	holdPos_(2)+=0.0025;
+	holdPos_(2)+=0.015;
 	if (holdPos_(2)>0.75){
 	  holdPos_(2)=0.75;
 	}
@@ -1247,8 +1251,10 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
   else if(tuneAtt){
     ROS_INFO_ONCE("tuning att");
     nh_.getParam("geometric_controller/desiredAtt", desiredAtt);
-    nh_.getParam("geometric_controller/attctrl_tau_", attctrl_tau_);
-    ROS_INFO_THROTTLE(3,"attctrl_tau_=[%f, %f, %f] desiredAtt: [%f, %f, %f]", attctrl_tau_[0], attctrl_tau_[1], attctrl_tau_[2], desiredAtt[0], desiredAtt[1], desiredAtt[2]);
+    nh_.getParam("geometric_controller/attctrl_tau_p", attctrl_tau_p);
+    nh_.getParam("geometric_controller/attctrl_tau_i", attctrl_tau_i);
+    nh_.getParam("geometric_controller/attctrl_tau_d", attctrl_tau_d);
+    ROS_INFO_THROTTLE(3,"attctrl_tau_p=[%f, %f, %f], attctrl_tau_i=[%f, %f, %f], attctrl_tau_d=[%f, %f, %f] desiredAtt: [%f, %f, %f]", attctrl_tau_p[0], attctrl_tau_p[1], attctrl_tau_p[2], attctrl_tau_i[0], attctrl_tau_i[1], attctrl_tau_i[2], attctrl_tau_d[0], attctrl_tau_d[1], attctrl_tau_d[2],desiredAtt[0], desiredAtt[1], desiredAtt[2]);
     
     a_ref(0) = desiredAtt[0];
     a_ref(1) = desiredAtt[1];
@@ -1507,32 +1513,57 @@ Eigen::Vector4d geometricCtrl::acc2quaternion(Eigen::Vector3d vector_acc, double
 }
 
 Eigen::Vector4d geometricCtrl::attcontroller(Eigen::Vector4d &ref_att, Eigen::Vector3d &ref_acc, Eigen::Vector4d &curr_att){
-  Eigen::Vector4d ratecmd;
-  Eigen::Vector4d qe, q_inv, inverse;
-  Eigen::Matrix3d rotmat;
+  // Eigen::Vector4d ratecmd;
+  // Eigen::Vector4d qe, q_inv, inverse;
+  // Eigen::Matrix3d rotmat;
   Eigen::Vector3d zb;
   inverse << 1.0, -1.0, -1.0, -1.0;
   q_inv = inverse.asDiagonal() * curr_att;
-  qe = quatMultiplication(q_inv, ref_att);
+  qe = quatMultiplication(q_inv, ref_att);  
   
   geometry_msgs::QuaternionStamped errorQ;
   errorQ.header.stamp= ros::Time::now();
   errorQ.quaternion.w = qe(0);
   errorQ.quaternion.x = qe(1);
   errorQ.quaternion.y = qe(2);
-  errorQ.quaternion.z = qe(3);
-  
+  errorQ.quaternion.z = qe(3); 
   error_attPub_.publish(errorQ);
+  
+  signQe = std::copysign(1.0, qe(0));
+  
+  actionAtt << signQe*qe(1), signQe*qe(2), signQe*qe(3);
+  sumAtt += actionAtt;
+  // prevent windup
+  if (sumAtt(0)>max_tau_i){
+    sumAtt(0)=max_tau_i;
+  }
+  else if(sumAtt(0)<-max_tau_i){
+    sumAtt(0)=-max_tau_i;
+  }
+  
+  if (sumAtt(1)>max_tau_i){
+    sumAtt(1)=max_tau_i;
+  }
+  else if(sumAtt(1)<-max_tau_i){
+    sumAtt(1)=-max_tau_i;
+  }
+  
+  if (sumAtt(2)>max_tau_i){
+    sumAtt(2)=max_tau_i;
+  }
+  else if(sumAtt(2)<-max_tau_i){
+    sumAtt(2)=-max_tau_i;
+  }
 
-  double rollRate, pitchRate, yawRate;
 
-  rollRate=(2.0 / attctrl_tau_[0]) * std::copysign(1.0, qe(0)) * qe(1);
-  pitchRate=(2.0 / attctrl_tau_[1]) * std::copysign(1.0, qe(0)) * qe(2);
-  yawRate=(2.0 / attctrl_tau_[2]) * std::copysign(1.0, qe(0)) * qe(3);
+  rollRate  = 2.0/attctrl_tau_p[0] * actionAtt(0) + 2.0/attctrl_tau_i[0]*sumAtt(0);
+  pitchRate = 2.0/attctrl_tau_p[1] * actionAtt(1) + 2.0/attctrl_tau_i[1]*sumAtt(1);
+  yawRate   = 2.0/attctrl_tau_p[2] * actionAtt(2) + 2.0/attctrl_tau_i[2]*sumAtt(2);
 
-  // ratecmd(0) = std::clamp(rollRate,-max_rollRate, max_rollRate);
-  // ratecmd(1) = std::clamp(pitchRate,-max_pitchRate, max_pitchRate);
-  // ratecmd(2) = std::clamp(yawRate,-max_yawRate, max_yawRate);
+  // rollRate  = (2.0 / attctrl_tau_p[0]) * std::copysign(1.0, qe(0)) * qe(1);
+  // pitchRate = (2.0 / attctrl_tau_p[1]) * std::copysign(1.0, qe(0)) * qe(2);
+  // yawRate   = (2.0 / attctrl_tau_p[2]) * std::copysign(1.0, qe(0)) * qe(3);
+
   if (rollRate>max_rollRate){
     ratecmd(0) = max_rollRate;
   }

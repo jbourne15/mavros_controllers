@@ -86,7 +86,7 @@ class geometricCtrl
 
     int mode, tpvh;
     int AGENT_NUMBER;
-    std::vector<double> desiredRate, desiredAtt, attctrl_tau_;
+    std::vector<double> desiredRate, desiredAtt, attctrl_tau_p, attctrl_tau_d, attctrl_tau_i;
     std::vector<ros::Time> agentInfo_time;
     bool tuneRate, tuneAtt, avoiding, timeFlag, obstaclesOn;
     ros::Time finishedAvoid_time, avoid_time;
@@ -104,7 +104,7 @@ class geometricCtrl
     /* double attctrl_tau_; */
     //Eigen::Vector3d attctrl_tau_;
     double norm_thrust_const_;
-    double max_fb_acc_, max_rollRate, max_pitchRate, max_yawRate, max_rollPitch, takeOffThrust;
+    double max_fb_acc_, max_rollRate, max_pitchRate, max_yawRate, max_rollPitch, takeOffThrust, max_tau_i;
     float radius;
     mavros_msgs::SetMavFrame mav_frame;
     std::vector<bool> newPosData, newVelData;
@@ -112,6 +112,15 @@ class geometricCtrl
     int numAgents;
     int quadMode;
     geometry_msgs::TwistStamped b_msg;
+
+    Eigen::Vector4d ratecmd;
+    Eigen::Vector4d qe, q_inv, inverse;
+    Eigen::Matrix3d rotmat;
+
+    Eigen::Vector3d sumAtt, actionAtt, cmdRate;
+    double rollRate, pitchRate, yawRate;
+    int signQe;
+
 
     std::vector<Eigen::Vector3d> errorVel_history;
     /* std::vector<Eigen::Vector3d> errorVel_history; */
