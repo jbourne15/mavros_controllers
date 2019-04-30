@@ -245,104 +245,14 @@ void trajectoryPublisher::getPolyTrajectory(void){
   // mav_trajectory_generation::Segment::Vector segments;
   nlOpt.getPolynomialOptimizationRef().getSegments(&segments);
 
-  // std::cout<<segments<<std::endl;
+  // check if its feasible
 
-
-
-  //--- Creating Trajectories ---//
-
-  // mav_trajectory_generation::Trajectory trajectory;
-  nlOpt.getTrajectory(&trajectory_poly);
-
-  // Features:
-  // Splitting:
-  // mav_trajectory_generation::Trajectory x_trajectory = trajectory.getTrajectoryWithSingleDimension(1);
-
-  // Compositing:
-  // mav_trajectory_generation::Trajectory trajectory_with_yaw; trajectory.getTrajectoryWithAppendedDimension(yaw_trajectory, &trajectory_with_yaw);
-
-  // std::cout<<x_trajectory<<std::endl;
-
-
-
-  //--- Sampling Trajectories ---//
-
-  // // 1. By evaluating directly from the Trajectory class.
-  // // Single sample:
-  // double sampling_time = 2.0;
-  // int derivative_order = mav_trajectory_generation::derivative_order::POSITION;
-  // Eigen::VectorXd sample = trajectory.evaluate(sampling_time, derivative_order);
-
-  // // Sample range:
-  // double t_start = 2.0;
-  // double t_end = 10.0;
-  // double dt = 0.01;
-  // std::vector<Eigen::VectorXd> result;
-  // std::vector<double> sampling_times; // Optional.
-  // trajectory.evaluateRange(t_start, t_end, dt, derivative_order, &result, &sampling_times);
-
-  // // std::cout<<result[0]<<std::endl;
-  // // for (int i=0; i<result.size(); i++){
-  //   // std::cout<<result[i]<<std::endl;
-  // // }
-
-
-  // 2. By conversion to mav_msgs::EigenTrajectoryPoint state(s). These functions support 3D or 4D trajectories (the 4th dimension is assumed to be yaw if it exists).
-  mav_msgs::EigenTrajectoryPoint state;
-  mav_msgs::EigenTrajectoryPoint::Vector states;
-
-  // Single sample:
-  double sampling_time = 2.0;
-  bool success = mav_trajectory_generation::sampleTrajectoryAtTime(trajectory_poly, sampling_time, &state);
-
-  // Sample range:
-  double t_start = 2.0;
-  double duration = 10.0;
-  double dt = 0.01;
-  success = mav_trajectory_generation::sampleTrajectoryInRange(trajectory_poly, t_start, duration, dt, &states);  
-  // Whole trajectory:
-  double sampling_interval = 0.5;
-  success = mav_trajectory_generation::sampleWholeTrajectory(trajectory_poly, sampling_interval, &states);
-
-  // std::cout<<states<<std::endl;
-
-  //--- Visualizing Trajectories ---//
-
-  //For a simple visualization:
-  double distance = 2.0; // Distance by which to seperate additional markers. Set 0.0 to disable.
-  std::string frame_id = "world";
-
-  // visualization_msgs::MarkerArray markers;
-  
-  // From Trajectory class:
-  mav_trajectory_generation::drawMavTrajectory(trajectory_poly, distance, frame_id, &markers);
-
-  // From mav_msgs::EigenTrajectoryPoint::Vector states:
-  // mav_trajectory_generation::drawMavSampledTrajectory(states, distance, frame_id, &markers);
-
-
-  //For a visualization including an additional marker at a set distance (e.g. hexacopter marker):
-  // mav_visualization::HexacopterMarker hex(simple);
-
-  // From Trajectory class:
-  // mav_trajectory_generation::drawMavTrajectoryWithMavMarker(trajectory, distance, frame_id, hex &markers);
-
-  // From mav_msgs::EigenTrajectoryPoint::Vector states:
-  // mav_trajectory_generation::drawMavSampledTrajectoryWithMavMarker(states, distance, frame_id, hex, &markers)
-
-
-  ros::Publisher markers_pub = nh_.advertise<visualization_msgs::MarkerArray>("/trajectory", 1);
-
-  // std::cout<<markers<<std::endl;
-
-
-  // error in next line
   typedef mav_trajectory_generation::InputConstraintType ICT;
   mav_trajectory_generation::InputConstraints input_constraints;
-  input_constraints.addConstraint(ICT::kFMin, 0.0 * 9.81); // minimum acceleration in [m/s/s].
+  input_constraints.addConstraint(ICT::kFMin, 0); // minimum acceleration in [m/s/s].
   input_constraints.addConstraint(ICT::kFMax, a_max+9.81); // maximum acceleration in [m/s/s].
   input_constraints.addConstraint(ICT::kVMax, v_max); // maximum velocity in [m/s].
-  input_constraints.addConstraint(ICT::kOmegaXYMax, .35*M_PI / 2.0); // maximum roll/pitch rates in [rad/s].
+  input_constraints.addConstraint(ICT::kOmegaXYMax, 0.75); // maximum roll/pitch rates in [rad/s].
   // input_constraints.addConstraint(ICT::kOmegaZMax, M_PI / 2.0); // maximum yaw rates in [rad/s].
   // input_constraints.addConstraint(ICT::kOmegaZDotMax, M_PI); // maximum yaw acceleration in [rad/s/s].
 
@@ -358,22 +268,32 @@ void trajectoryPublisher::getPolyTrajectory(void){
   Eigen::Vector3d normal(0.0, 0.0, 1.0);
   feasibility_check_ground.half_plane_constraints_.emplace_back(point, normal);
 
+  int ts = 1;
+
   // Check feasibility.
   for (int i=0; i<segments.size(); i++){    
     mav_trajectory_generation::InputFeasibilityResult result = feasibility_check.checkInputFeasibility(segments[i]);
-    std::cout << "The segment["<<i<<"] is" << mav_trajectory_generation::getInputFeasibilityResultName(result)<< "." << std::endl;
-
-    if(!feasibility_check_ground.checkHalfPlaneFeasibility(segments[i])) {
-    std::cout << "The segment["<<i<<"] is in collision with the ground plane." << std::endl;
+    if (result!=0 || !feasibility_check_ground.checkHalfPlaneFeasibility(segments[i])){
+      ts=ts-5;
+      std::cout << "The segment["<<i<<"] is" << mav_trajectory_generation::getInputFeasibilityResultName(result)<< "." << std::endl;
+      std::cout << "The segment["<<i<<"] is in collision with the ground plane." << std::endl;
     }
-
-    // std::cout<<"segment: "<<segments[i]<<std::endl;
-
   }
   std::cout<<"total compute time: "<<ros::Time::now().toSec()-stime.toSec()<<std::endl;
   
-  start_time_ = ros::Time::now();
+  if (ts==1){
+    //--- Creating Trajectories ---//
+    nlOpt.getTrajectory(&trajectory_poly);
 
+    //For a simple visualization:
+    double distance = 2.0; // Distance by which to seperate additional markers. Set 0.0 to disable.
+    std::string frame_id = "world";
+
+    // From Trajectory class:
+    mav_trajectory_generation::drawMavTrajectory(trajectory_poly, distance, frame_id, &markers);
+    ros::Publisher markers_pub = nh_.advertise<visualization_msgs::MarkerArray>("/trajectory", 1);
+    start_time_ = ros::Time::now();
+  }
 }
 
 void trajectoryPublisher::setTrajectory(int ID, double omega, Eigen::Vector3d axis, double radius,
