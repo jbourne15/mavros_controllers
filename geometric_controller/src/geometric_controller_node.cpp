@@ -28,7 +28,10 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   Kpos_ << -3.0, -3.0, -60.0;
   Kvel_ << -3.0, -3.0, -60.0;
   Kint_ << -3.0, -3.0, -60.0;
+  inverse << 1.0, -1.0, -1.0, -1.0;
   std::vector<double> kp, kv, ki;
+
+  q_des<< -0.7071068,0,0,-0.7071068;
 
   nh_.getParam("geometric_controller/kp", kp);
   Kpos_<<kp[0],kp[1],kp[2];
@@ -166,6 +169,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   obstaclesPub_ = nh_.advertise<visualization_msgs::Marker>(agentName+"/obstacles",1);
   
   angularVelPub_ = nh_.advertise<mavros_msgs::AttitudeTarget>(agentName+"/command/bodyrate_command", 1);
+  referencePosePubCA_ = nh_.advertise<geometry_msgs::PoseStamped>(agentName+"/reference/poseCA", 1);
   referencePosePub_ = nh_.advertise<geometry_msgs::PoseStamped>(agentName+"/reference/pose", 1);
 
   // if (tuneAtt){
@@ -879,8 +883,7 @@ void geometricCtrl::targetCallback(const geometry_msgs::TwistStamped& msg) {
 
   if (avoidAgents && newDataFlag){
     updateCA_velpos();
-  }
-  
+  }  
   
   if (targetVel_.norm()>=0.25){
     mavYaw_ = std::atan2(targetVel_(1),targetVel_(0));
@@ -891,21 +894,6 @@ void geometricCtrl::targetCallback(const geometry_msgs::TwistStamped& msg) {
 
   mavYaw_ = M_PI/2;
   
- 
-  // if(reference_request_dt_ > 0 && targetVel_.norm()>=0.25 && false) targetAcc_ = 0.9*targetAcc_ + 0.1*(targetVel_ - targetVel_prev_ ) / reference_request_dt_; // I can get this from trajectory!!!
-  
-  // if(reference_request_dt_ > 0 && targetVel_noCA.norm()>=0.25) targetAcc_ = (targetVel_noCA - targetVel_noCA_prev_ ) / reference_request_dt_; // I can get this from trajectory!!!
-  // else targetAcc_ = Eigen::Vector3d::Zero();
-  
-
-  // accel_CA.header.stamp = ros::Time::now();
-  // accel_CA.accel.linear.x=targetAcc_(0);
-  // accel_CA.accel.linear.y=targetAcc_(1);
-  // accel_CA.accel.linear.z=targetAcc_(2);
-
-  // mavAccelPub_.publish(accel_CA);
-  
-
   newRefData=true;
 
 }
@@ -1062,14 +1050,6 @@ void geometricCtrl::gzmavposeCallback(const gazebo_msgs::ModelStates& msg){
 
 void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
   
-  // if( current_state_.mode != "OFFBOARD" && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
-  //   offb_set_mode_.request.custom_mode = "OFFBOARD";
-  //   if( set_mode_client_.call(offb_set_mode_) && offb_set_mode_.response.mode_sent){
-  //     ROS_INFO("Offboard enabled");
-  //   }
-  //   last_request_ = ros::Time::now();
-  // }
-  
   nh_.param<std::string>("/runAlg", runAlg, "lawnMower");
     
   if (runAlg.compare("info")==0 && g_geodetic_converter.isInitialised() && !std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) && !std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) && newRefData){
@@ -1118,47 +1098,32 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
     }
   }
 
-  //TODO: Enable Failsaif sutdown
-  if(ctrl_mode_ == MODE_ROTORTHRUST){
-    //TODO: Compute Thrust commands
-  } else if(ctrl_mode_ == MODE_BODYRATE){
-
+  
+  if(ctrl_mode_ == MODE_BODYRATE){
     if (quadMode==1){
       quadMode=2;
       holdPos_ = mavPos_;
       holdPos_(2)=0.0;
-      /*
-      a_des<<0,0,1;      
-      q_des = acc2quaternion(a_des, mavYaw_);
-      cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
-      cmdBodyRate_(3)=takeOffThrust;
-      if (mavPos_(2)>0.5){
-	quadMode=2;
-	holdPos_ = mavPos_;
-      }
-      */
-      // ROS_INFO("%d taking off, %f", quadMode, mavPos_(2));	
     }
-
-    if (quadMode==2){      
+    else if (quadMode==2){      
       Eigen::Vector3d errorPos_, errorVel_, errorPos_noCA, errorVel_filtered;
       Eigen::Matrix3d R_ref;
       if(current_state_.mode.compare("OFFBOARD")==0 && current_state_.armed){
-	holdPos_(2)+=0.015;
-	if (holdPos_(2)>0.75){
-	  holdPos_(2)=0.75;
+	holdPos_(2)+=0.04;
+	if (holdPos_(2)>1.0){
+	  holdPos_(2)=1.0;
 	}
       }
 
       errorPos_   = mavPos_ - holdPos_;
       errorVel_   = mavVel_;    
-      errorSum_  += errorPos_;    
+      errorSum_  += errorPos_;
         
       action_int_ = (Kint_.asDiagonal()*errorSum_);
       if (action_int_.norm()>max_fb_acc_){
 	action_int_=(max_fb_acc_/ action_int_.norm())*action_int_;
       }
-      if ((-action_int_.norm())<(-max_fb_acc_)){
+      else if ((-action_int_.norm())<(-max_fb_acc_)){
 	action_int_=-(max_fb_acc_ / action_int_.norm())*action_int_;
       }
         
@@ -1172,25 +1137,23 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
     
       q_des = acc2quaternion(a_des, mavYaw_);
       cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
-
-      if (((targetPos_-mavPos_).norm() < .05 || ((mavPos_-holdPos_).norm()<0.05 && mavVel_.norm()<.25)) && holdPos_(2)==0.75){
+      
+      if ((targetPos_-mavPos_).norm() < .001 && mavVel_.norm()<.25){
         quadMode=3;
+	//quadMode=2;
       }
       else{
 	ROS_INFO_THROTTLE(1,"waiting until quad is still");
       }
       // ROS_INFO("%d holding pos %f,%f,%f", quadMode, holdPos_(0), holdPos_(1), holdPos_(2));	
-    }
-    
-    if(quadMode==3){
+    }    
+    else if(quadMode==3){
       computeBodyRateCmd(false);
     }
     
     pubReferencePose();
     pubRateCommands();
 	
-  } else if(ctrl_mode_ == MODE_BODYTORQUE){
-    //TODO: implement actuator commands for mavros
   }
   ros::spinOnce();
   }
@@ -1213,18 +1176,18 @@ void geometricCtrl::pubReferencePose(){
   referencePoseMsg_.pose.position.x = targetPos_noCA(0);
   referencePoseMsg_.pose.position.y = targetPos_noCA(1);
   referencePoseMsg_.pose.position.z = targetPos_noCA(2);
-  // referencePoseMsg_.pose.position.x = targetPos_(0);
-  // referencePoseMsg_.pose.position.y = targetPos_(1);
-  // referencePoseMsg_.pose.position.z = targetPos_(2);
-  //referencePoseMsg_.pose.position.x = desVel.x();
-  //referencePoseMsg_.pose.position.y = desVel.y();
-
 
   referencePoseMsg_.pose.orientation.w = q_des(0);
   referencePoseMsg_.pose.orientation.x = q_des(1);
   referencePoseMsg_.pose.orientation.y = q_des(2);
   referencePoseMsg_.pose.orientation.z = q_des(3);
   referencePosePub_.publish(referencePoseMsg_);
+
+  referencePoseMsgCA_=referencePoseMsg_;
+  referencePoseMsgCA_.pose.position.x = targetPos_(0);
+  referencePoseMsgCA_.pose.position.y = targetPos_(1);
+  referencePoseMsgCA_.pose.position.z = targetPos_(2);
+  referencePosePubCA_.publish(referencePoseMsgCA_);
 }
 
 void geometricCtrl::pubRateCommands(){
@@ -1516,18 +1479,17 @@ Eigen::Vector4d geometricCtrl::attcontroller(Eigen::Vector4d &ref_att, Eigen::Ve
   // Eigen::Vector4d ratecmd;
   // Eigen::Vector4d qe, q_inv, inverse;
   // Eigen::Matrix3d rotmat;
-  Eigen::Vector3d zb;
-  inverse << 1.0, -1.0, -1.0, -1.0;
+  Eigen::Vector3d zb;  
   q_inv = inverse.asDiagonal() * curr_att;
-  qe = quatMultiplication(q_inv, ref_att);  
-  
+  qe = quatMultiplication(q_inv, ref_att);
+
   geometry_msgs::QuaternionStamped errorQ;
   errorQ.header.stamp= ros::Time::now();
   errorQ.quaternion.w = qe(0);
   errorQ.quaternion.x = qe(1);
   errorQ.quaternion.y = qe(2);
-  errorQ.quaternion.z = qe(3); 
-  error_attPub_.publish(errorQ);
+  errorQ.quaternion.y = qe(3);  
+  error_attPub_.publish(errorQ);  
   
   signQe = std::copysign(1.0, qe(0));
   
@@ -1555,14 +1517,9 @@ Eigen::Vector4d geometricCtrl::attcontroller(Eigen::Vector4d &ref_att, Eigen::Ve
     sumAtt(2)=-max_tau_i;
   }
 
-
   rollRate  = 2.0/attctrl_tau_p[0] * actionAtt(0) + 2.0/attctrl_tau_i[0]*sumAtt(0);
   pitchRate = 2.0/attctrl_tau_p[1] * actionAtt(1) + 2.0/attctrl_tau_i[1]*sumAtt(1);
   yawRate   = 2.0/attctrl_tau_p[2] * actionAtt(2) + 2.0/attctrl_tau_i[2]*sumAtt(2);
-
-  // rollRate  = (2.0 / attctrl_tau_p[0]) * std::copysign(1.0, qe(0)) * qe(1);
-  // pitchRate = (2.0 / attctrl_tau_p[1]) * std::copysign(1.0, qe(0)) * qe(2);
-  // yawRate   = (2.0 / attctrl_tau_p[2]) * std::copysign(1.0, qe(0)) * qe(3);
 
   if (rollRate>max_rollRate){
     ratecmd(0) = max_rollRate;

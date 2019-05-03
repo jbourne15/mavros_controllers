@@ -69,7 +69,7 @@ class geometricCtrl
     ros::Subscriber mavtwistSub_;
     ros::Subscriber rcSub_;  
     ros::Publisher rotorVelPub_, angularVelPub_;
-    ros::Publisher referencePosePub_;
+    ros::Publisher referencePosePub_, referencePosePubCA_;
     ros::Publisher des_attRefPub_, error_attPub_;
     ros::Publisher cur_attRefPub_;
     ros::Publisher mavPosVelPub_;
@@ -131,7 +131,7 @@ class geometricCtrl
     mavros_msgs::SetMode offb_set_mode_;
     mavros_msgs::CommandBool arm_cmd_;
     mavros_msgs::AttitudeTarget angularVelMsg_;
-    geometry_msgs::PoseStamped referencePoseMsg_;
+    geometry_msgs::PoseStamped referencePoseMsg_, referencePoseMsgCA_;
     geometry_msgs::Vector3Stamped des_eulerRefMsg_;
     geometry_msgs::Vector3Stamped cur_eulerRefMsg_;
     geometry_msgs::AccelStamped accel_CA;
