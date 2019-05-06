@@ -7,8 +7,12 @@ desiredRate: [0,1,0,.1] # wx,wy,wz,thrust ie roll pitch yaw rates in rad/sec
 #-----------------------------------#
 # attitude loop
 tuneAtt: true
-desiredAtt: [0, 0, 1.81] #  orientation vector
+desiredAtt: [0, 0, 1] #  orientation vector
 # tuning parameter:
-attctrl_tau_: [.2, .2, .15]
+attctrl_tau_p: [.35, .35, .35]
+attctrl_tau_i: [25, 25, 100]
+attctrl_tau_d: [1000000, 100000, 1000000] #unused
 #-----------------------------------#
-
+# position/vel loop
+# set the parameter tunePosVel in the target/launch/outDoorTarget.launch 
+#-----------------------------------#

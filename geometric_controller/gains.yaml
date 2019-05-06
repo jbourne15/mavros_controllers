@@ -1,14 +1,14 @@
-attctrl_tau_p: [.3, .3, .3]
-attctrl_tau_i: [100, 100, 100]
-attctrl_tau_d: [.1, .1, .1] # not used
-kp: [-9, -9, -6]
-kv: [-3, -3, -4]
-ki: [-0, -0, -.6]
+attctrl_tau_p: [.3, .3, .5]
+attctrl_tau_i: [25, 25, 100]
+attctrl_tau_d: [1000000, 1000000, 1000000] #unused
+kp: [-2, -2, -6]
+kv: [-1, -1, -6]
+ki: [-0, -0, -0.001]
 max_tau_i: 5.0
 max_fb_acc_: 5.0
-norm_thrust_const_: 0.0575
+norm_thrust_const_: 0.06
 obstaclesOn: false
 radius: 2.5
-max_rollRate: .5
-max_pitchRate: .5
-max_yawRate: .5
+max_rollRate: 2.5
+max_pitchRate: 2.5
+max_yawRate: 1.0

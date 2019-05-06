@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <string>
 #include <sstream>
+#include <time.h>
 
 #include <Eigen/Dense>
 #include <mav_msgs/Actuators.h>
@@ -37,6 +38,7 @@
 #include <gazebo_msgs/ModelStates.h>
 #include <mavros_msgs/SetMavFrame.h>
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
+#include <sensor_msgs/Imu.h>
 
 #include <RVO.h>
 #include <dlib/matrix.h>
@@ -81,7 +83,7 @@ class geometricCtrl
     ros::ServiceClient set_mode_client_;
     ros::ServiceClient frame_client;
     ros::ServiceServer ctrltriggerServ_;
-    ros::Timer cmdloop_timer_, statusloop_timer_;
+    ros::Timer cmdloop_timer_, statusloop_timer_, arming_timer_, checkData_timer_;
     ros::Time last_request_, reference_request_now_, reference_request_last_;
 
     int mode, tpvh;
@@ -114,12 +116,12 @@ class geometricCtrl
     geometry_msgs::TwistStamped b_msg;
 
     Eigen::Vector4d ratecmd;
-    Eigen::Vector4d qe, q_inv, inverse;
+    Eigen::Vector4d qe, q_inv, q_inv_dot, inverse, qe_prev, qe_dot;
     Eigen::Matrix3d rotmat;
 
-    Eigen::Vector3d sumAtt, actionAtt, cmdRate;
+    Eigen::Vector3d sumAtt, actionAtt, cmdRate, actionDotAtt;
     double rollRate, pitchRate, yawRate;
-    int signQe;
+    int signQe, signQe_dot;
 
 
     std::vector<Eigen::Vector3d> errorVel_history;
@@ -149,7 +151,7 @@ class geometricCtrl
     Eigen::Vector4d cmdBodyRate_; //{wx, wy, wz, Thrust}
     Eigen::Vector3d Kpos_, Kvel_, D_, Kpos_noCA_, Kint_;
     Eigen::Vector3d errorSum_;
-    
+
     RVO::Vector2 errorsumOri_;
     RVO::Vector2 desVel;
 
@@ -166,6 +168,9 @@ class geometricCtrl
     void flattargetCallback(const controller_msgs::FlatTarget& msg);
     void keyboardCallback(const geometry_msgs::Twist& msg);
     void cmdloopCallback(const ros::TimerEvent& event);
+    void armingCallback(const ros::TimerEvent& event);
+    void checkDataCallback(const ros::TimerEvent& event);
+
     void mavstateCallback(const mavros_msgs::State::ConstPtr& msg);
     void mavposeCallback(const geometry_msgs::PoseStamped& msg);
     void mavtwistCallback(const geometry_msgs::TwistStamped& msg);

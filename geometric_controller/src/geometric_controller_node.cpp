@@ -32,6 +32,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   std::vector<double> kp, kv, ki;
 
   q_des<< -0.7071068,0,0,-0.7071068;
+  holdPos_<<0,0,0;
 
   nh_.getParam("geometric_controller/kp", kp);
   Kpos_<<kp[0],kp[1],kp[2];
@@ -113,101 +114,105 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   std::fill(newVelData.begin(), newVelData.end(), false);
   std::fill(newPosData.begin(), newPosData.end(), false);
 
-  agentInfo_time.resize(numAgents);
-  std::fill(agentInfo_time.begin(), agentInfo_time.end(), ros::Time::now());
+   agentInfo_time.resize(numAgents);
+   std::fill(agentInfo_time.begin(), agentInfo_time.end(), ros::Time::now());
 
-  xt.set_size(numAgents,3); // xyz  
-  set_all_elements(xt,0);
+   xt.set_size(numAgents,3); // xyz  
+   set_all_elements(xt,0);
 
-  vt.set_size(numAgents,3); // xyz  
-  set_all_elements(vt,0);  
+   vt.set_size(numAgents,3); // xyz  
+   set_all_elements(vt,0);  
 
-  nh_.param<double>("/v_max", v_max, 3);
-  nh_.param<bool>("/avoidAgents", avoidAgents, true);
+   nh_.param<double>("/v_max", v_max, 3);
+   nh_.param<bool>("/avoidAgents", avoidAgents, true);
 
-  rcSub_ = nh_.subscribe(agentName+"/mavros/rc/in",1,&geometricCtrl::rc_command_callback,this,ros::TransportHints().tcpNoDelay());
-  referenceSub_=nh_.subscribe(agentName+"/reference/setpoint",1, &geometricCtrl::targetCallback,this,ros::TransportHints().tcpNoDelay());
+   rcSub_ = nh_.subscribe(agentName+"/mavros/rc/in",1,&geometricCtrl::rc_command_callback,this,ros::TransportHints().tcpNoDelay());
+   referenceSub_=nh_.subscribe(agentName+"/reference/setpoint",1, &geometricCtrl::targetCallback,this,ros::TransportHints().tcpNoDelay());
 
-  accelReferenceSub_=nh_.subscribe(agentName+"/reference/accel",1, &geometricCtrl::targetAccelCallback,this,ros::TransportHints().tcpNoDelay());
+   accelReferenceSub_=nh_.subscribe(agentName+"/reference/accel",1, &geometricCtrl::targetAccelCallback,this,ros::TransportHints().tcpNoDelay());
     
-  flatreferenceSub_ = nh_.subscribe(agentName+"/reference/flatsetpoint", 1, &geometricCtrl::flattargetCallback, this, ros::TransportHints().tcpNoDelay());
-  mavstateSub_ = nh_.subscribe(agentName+"/mavros/state", 1, &geometricCtrl::mavstateCallback, this,ros::TransportHints().tcpNoDelay());
+   flatreferenceSub_ = nh_.subscribe(agentName+"/reference/flatsetpoint", 1, &geometricCtrl::flattargetCallback, this, ros::TransportHints().tcpNoDelay());
+   mavstateSub_ = nh_.subscribe(agentName+"/mavros/state", 1, &geometricCtrl::mavstateCallback, this,ros::TransportHints().tcpNoDelay());
 
-  if(tuneAtt || tuneRate){
-    mavposeSub_ = nh_.subscribe(agentName+"/mavros/local_position/pose", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
-  }
-  else{  
-    // mavposeSub_ = nh_.subscribe(agentName+"/local_position", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
-    local_sub   = nh_.subscribe(agentName+"/gps_pose", 1, &geometricCtrl::localCallback, this, ros::TransportHints().tcpNoDelay()); // from geodetic
-    // mavposeSub_ = nh_.subscribe(agentName+"/mavros/local_position/pose", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
-  }
+   if(tuneAtt || tuneRate){
+     mavposeSub_ = nh_.subscribe(agentName+"/mavros/local_position/pose", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
+   }
+   else{  
+     // mavposeSub_ = nh_.subscribe(agentName+"/local_position", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
+     local_sub   = nh_.subscribe(agentName+"/gps_pose", 1, &geometricCtrl::localCallback, this, ros::TransportHints().tcpNoDelay()); // from geodetic
+     // mavposeSub_ = nh_.subscribe(agentName+"/mavros/local_position/pose", 1, &geometricCtrl::mavposeCallback, this,ros::TransportHints().tcpNoDelay());
+   }
 
-  mavtwistSub_ = nh_.subscribe(agentName+"/mavros/local_position/velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
-   // mavtwistSub_ = nh_.subscribe(agentName+"/local_velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
+   mavtwistSub_ = nh_.subscribe(agentName+"/mavros/local_position/velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
+    // mavtwistSub_ = nh_.subscribe(agentName+"/local_velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
   
-  gzmavposeSub_ = nh_.subscribe("/gazebo/model_states", 1, &geometricCtrl::gzmavposeCallback, this, ros::TransportHints().tcpNoDelay());
+   gzmavposeSub_ = nh_.subscribe("/gazebo/model_states", 1, &geometricCtrl::gzmavposeCallback, this, ros::TransportHints().tcpNoDelay());
 
-  agentSub_ = nh_.subscribe("/agent_mps_data",1, &geometricCtrl::agentsCallback, this, ros::TransportHints().tcpNoDelay());
-
+   agentSub_ = nh_.subscribe("/agent_mps_data",1, &geometricCtrl::agentsCallback, this, ros::TransportHints().tcpNoDelay());
     
-  ctrltriggerServ_ = nh_.advertiseService(agentName+"/tigger_rlcontroller", &geometricCtrl::ctrltriggerCallback, this);
-  cmdloop_timer_ = nh_.createTimer(ros::Duration(0.01), &geometricCtrl::cmdloopCallback, this); // Define timer for constant loop rate
-  statusloop_timer_ = nh_.createTimer(ros::Duration(1), &geometricCtrl::statusloopCallback, this); // Define timer for constant loop rate
+   ctrltriggerServ_ = nh_.advertiseService(agentName+"/tigger_rlcontroller", &geometricCtrl::ctrltriggerCallback, this);
+   cmdloop_timer_    = nh_.createTimer(ros::Duration(0.01), &geometricCtrl::cmdloopCallback, this); 
+   statusloop_timer_ = nh_.createTimer(ros::Duration(1), &geometricCtrl::statusloopCallback, this); 
+   arming_timer_     = nh_.createTimer(ros::Duration(.2), &geometricCtrl::armingCallback, this);    
+   checkData_timer_  = nh_.createTimer(ros::Duration(5), &geometricCtrl::checkDataCallback, this); 
 
-  for(int i=0;i<numAgents;++i){    
-    std::string topicName = "agent"+std::to_string(AGENT_NUMBER)+"_"+std::to_string(i+1);
-    agentPos_pub.push_back(nh_.advertise<visualization_msgs::Marker>(topicName, 1));
+   for(int i=0;i<numAgents;++i){    
+     std::string topicName = "agent"+std::to_string(AGENT_NUMBER)+"_"+std::to_string(i+1);
+     agentPos_pub.push_back(nh_.advertise<visualization_msgs::Marker>(topicName, 1));
 
-  }
-  for(int i=0;i<numAgents;++i){    
-    std::string topicName = "agentVel"+std::to_string(AGENT_NUMBER)+"_"+std::to_string(i+1);
-    agentVel_pub.push_back(nh_.advertise<visualization_msgs::Marker>(topicName, 1));
+   }
+   for(int i=0;i<numAgents;++i){    
+     std::string topicName = "agentVel"+std::to_string(AGENT_NUMBER)+"_"+std::to_string(i+1);
+     agentVel_pub.push_back(nh_.advertise<visualization_msgs::Marker>(topicName, 1));
 
-  }
+   }
   
-  bPub_ = nh_.advertise<geometry_msgs::TwistStamped>(agentName+"/b", 1);
-  obstaclesPub_ = nh_.advertise<visualization_msgs::Marker>(agentName+"/obstacles",1);
+   bPub_ = nh_.advertise<geometry_msgs::TwistStamped>(agentName+"/b", 1);
+   obstaclesPub_ = nh_.advertise<visualization_msgs::Marker>(agentName+"/obstacles",1);
   
-  angularVelPub_ = nh_.advertise<mavros_msgs::AttitudeTarget>(agentName+"/command/bodyrate_command", 1);
+   angularVelPub_ = nh_.advertise<mavros_msgs::AttitudeTarget>(agentName+"/command/bodyrate_command", 1);
   referencePosePubCA_ = nh_.advertise<geometry_msgs::PoseStamped>(agentName+"/reference/poseCA", 1);
   referencePosePub_ = nh_.advertise<geometry_msgs::PoseStamped>(agentName+"/reference/pose", 1);
 
-  // if (tuneAtt){
-  des_attRefPub_ = nh_.advertise<geometry_msgs::QuaternionStamped>(agentName+"/desAtt",1);
-  cur_attRefPub_ = nh_.advertise<geometry_msgs::QuaternionStamped>(agentName+"/curAtt",1);
-  error_attPub_ = nh_.advertise<geometry_msgs::QuaternionStamped>(agentName+"/errorAtt",1);
+   // if (tuneAtt){
+   des_attRefPub_ = nh_.advertise<geometry_msgs::QuaternionStamped>(agentName+"/desAtt",1);
+   cur_attRefPub_ = nh_.advertise<geometry_msgs::QuaternionStamped>(agentName+"/curAtt",1);
+   error_attPub_ = nh_.advertise<geometry_msgs::QuaternionStamped>(agentName+"/errorAtt",1);
 
-  mavPosVelPub_ = nh_.advertise<geometry_msgs::TwistStamped>(agentName+"/mavPosVel",1);
-  mavAccelPub_  = nh_.advertise<geometry_msgs::AccelStamped>(agentName+"/mavAccel",1);
-  // }
+   mavPosVelPub_ = nh_.advertise<geometry_msgs::TwistStamped>(agentName+"/mavPosVel",1);
+   mavAccelPub_  = nh_.advertise<geometry_msgs::AccelStamped>(agentName+"/mavAccel",1);
+   // }
 
-  arming_client_ = nh_.serviceClient<mavros_msgs::CommandBool>(agentName+"/mavros/cmd/arming");
-  set_mode_client_ = nh_.serviceClient<mavros_msgs::SetMode>(agentName+"/mavros/set_mode");
+   arming_client_ = nh_.serviceClient<mavros_msgs::CommandBool>(agentName+"/mavros/cmd/arming");
+   set_mode_client_ = nh_.serviceClient<mavros_msgs::SetMode>(agentName+"/mavros/set_mode");
   
-  frame_client    = nh_.serviceClient<mavros_msgs::SetMavFrame>(agentName+"/mavros/mav_frame");
+   frame_client    = nh_.serviceClient<mavros_msgs::SetMavFrame>(agentName+"/mavros/mav_frame");
   
-  mav_frame.request.mav_frame = mav_frame.request.FRAME_BODY_NED;
-  std::cout<<"frame call: "<<frame_client.call(mav_frame)<<std::endl;
+   mav_frame.request.mav_frame = mav_frame.request.FRAME_BODY_NED;
+   std::cout<<"frame call: "<<frame_client.call(mav_frame)<<std::endl;
 
-  if (tuneRate && tuneAtt){
-    ROS_ERROR("tuneRate=true and tuneAtt=true, only tune one");
-    while(ros::ok()){ros::Duration(20.0).sleep();}
-  }
+   if (tuneRate && tuneAtt){
+     ROS_ERROR("tuneRate=true and tuneAtt=true, only tune one");
+     while(ros::ok()){ros::Duration(20.0).sleep();}
+   }
 
-  sim = new RVO::RVOSimulator();
-    
-  wait4Home(); // ensures I have gotten positions from other agents at least
-    
-  setupScenario();
+   sim = new RVO::RVOSimulator();
 
-  targetPos_ << xt(AGENT_NUMBER-1,0), xt(AGENT_NUMBER-1,1), 1;
+   wait4Home(); // ensures I have gotten positions from other agents at least
+
+   if (!tuneRate && !tuneAtt){
+     setupScenario();
+   }
+
+   targetPos_ << xt(AGENT_NUMBER-1,0), xt(AGENT_NUMBER-1,1), 1;
+
   
-  // ros::Duration(15.0).sleep(); // sleep for half a second
-}
+   // ros::Duration(15.0).sleep(); // sleep for half a second
+ }
 geometricCtrl::~geometricCtrl() {
-  delete sim;
-  //Destructor
-}
+   delete sim;
+   //Destructor
+ }
 
 
 void geometricCtrl::updateAgents(void) {
@@ -571,6 +576,34 @@ double geometricCtrl::b_sigMoid(double x, double c, double a){
   return 1/(1+std::exp(-c*(x-a)));
 }
 
+
+void geometricCtrl::checkDataCallback(const ros::TimerEvent& event){
+  
+  std::vector<double> kp, kv, ki;
+  nh_.getParam("geometric_controller/kp", kp);
+  Kpos_<<kp[0],kp[1],kp[2];
+  
+  nh_.getParam("geometric_controller/kv", kv);
+  Kvel_<<kv[0],kv[1],kv[2];
+
+  nh_.getParam("geometric_controller/ki", ki);
+  Kint_<<ki[0],ki[1],ki[2];
+
+  nh_.param<double>("geometric_controller/norm_thrust_const_", norm_thrust_const_, 0.1);
+
+  nh_.getParam("geometric_controller/attctrl_tau_p", attctrl_tau_p);
+  nh_.getParam("geometric_controller/attctrl_tau_i", attctrl_tau_i);
+  nh_.getParam("geometric_controller/attctrl_tau_d", attctrl_tau_d);
+
+  if (nh_.getParam("/gps_ref_latitude", H_latitude) &&
+        nh_.getParam("/gps_ref_longitude", H_longitude) &&
+        nh_.getParam("/gps_ref_altitude", H_altitude)){
+      g_geodetic_converter.initialiseReference(H_latitude, H_longitude, H_altitude);
+  }    
+  nh_.param<std::string>("/runAlg", runAlg, "lawnMower");
+  
+}
+
 void geometricCtrl::wait4Home(void){
     // Wait until GPS reference parameters are initialized.
   do {
@@ -582,16 +615,17 @@ void geometricCtrl::wait4Home(void){
     }
     
     nh_.param<std::string>("/runAlg", runAlg, "lawnMower");    
-    ros::Duration(0.01).sleep();
+    ros::Duration(0.1).sleep();
     ros::spinOnce();
 
     if(tuneAtt || tuneRate){
       break;
     }
 
-    ROS_INFO_THROTTLE(5,"[%d ctrl] waiting for pos and vel data from other agents and reference data %d, %d, %d, %d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData);
+    ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData, (runAlg.compare("info")!=0));
     
   } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData || (runAlg.compare("info")!=0)) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
+  
   //} while ((!g_geodetic_converter.isInitialised() || !newRefData) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
 
   newDataFlag=true;
@@ -629,7 +663,6 @@ void geometricCtrl::setupScenario(void) {
   }
 
   updateGoal();
-
   // for (size_t i = 0; i < sim->getNumAgents(); ++i) {
   //   std::cout<<"goals: "<<goals[i]<<std::endl;    
   // }
@@ -672,6 +705,7 @@ void geometricCtrl::setupScenario(void) {
   nh_.setParam("/boxXmax", SS(0,1));    
   nh_.setParam("/boxYmin", SS(1,0));
   nh_.setParam("/boxYmax", SS(1,1));
+
   
   std::vector<double> minT, maxT;
   nh_.getParam(agentName+"/pf/minT", minT);
@@ -836,10 +870,10 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
 
     agentInfo_time[msg.agent_number-1] = ros::Time::now();
   }
-  else{
-    int t=1;
-    ros::spinOnce();
-  }
+  //else{
+  //int t=1;
+  //ros::spinOnce();
+  //}
 }
 
 
@@ -881,7 +915,7 @@ void geometricCtrl::targetCallback(const geometry_msgs::TwistStamped& msg) {
   targetPos_ << msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z;
   targetVel_ << msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z;
 
-  if (avoidAgents && newDataFlag){
+  if (avoidAgents && newDataFlag && !tuneAtt && !tuneRate){
     updateCA_velpos();
   }  
   
@@ -1048,24 +1082,24 @@ void geometricCtrl::gzmavposeCallback(const gazebo_msgs::ModelStates& msg){
   }
 }
 
-void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
-  
+
+void geometricCtrl::armingCallback(const ros::TimerEvent& event){
   nh_.param<std::string>("/runAlg", runAlg, "lawnMower");
     
-  if (runAlg.compare("info")==0 && g_geodetic_converter.isInitialised() && !std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) && !std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) && newRefData){
-  if(!sim_enable_){
-    if(mode<1100 && (tuneAtt || tuneRate)){
-      // Enable OFFBoard mode and arm automatically
-      arm_cmd_.request.value = true;      
-      if( !current_state_.armed && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
-	if( arming_client_.call(arm_cmd_) && arm_cmd_.response.success){
-	  ROS_INFO("Vehicle armed");
+  if (runAlg.compare("info")==0 && newDataFlag || tuneAtt || tuneRate){
+    if(!sim_enable_){
+      if(mode<1100 && (tuneAtt || tuneRate)){
+	// Enable OFFBoard mode and arm automatically
+	arm_cmd_.request.value = true;      
+	if( !current_state_.armed && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
+	  if( arming_client_.call(arm_cmd_) && arm_cmd_.response.success){
+	    ROS_INFO("Vehicle armed");
+	  }
+	  last_request_ = ros::Time::now();
 	}
-	last_request_ = ros::Time::now();
       }
-    }
-    else if(mode>1100 && (tuneAtt || tuneRate)){
-      ROS_INFO_THROTTLE(5,"flip remote switch");
+      else if(mode>1100 && (tuneAtt || tuneRate)){
+	ROS_INFO_THROTTLE(5,"flip remote switch");
 	arm_cmd_.request.value = false;
 	if( current_state_.armed && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
 	  if( arming_client_.call(arm_cmd_) && arm_cmd_.response.success){
@@ -1073,90 +1107,104 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	  }
 	  last_request_ = ros::Time::now();
 	}
-    }
-    //else{
+      }
+      //else{
       // if i am not tuning then let client handle arming and offboard mode
-    //}
-    
-
-  }
-  else{ // i am simulating
-    arm_cmd_.request.value = true;      
-    if( !current_state_.armed && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
-      if( arming_client_.call(arm_cmd_) && arm_cmd_.response.success){
-	ROS_INFO("Vehicle armed");
-      }
-      last_request_ = ros::Time::now();
+      //}
+      
+      
     }
-    
-    if( current_state_.mode != "OFFBOARD" && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
-      offb_set_mode_.request.custom_mode = "OFFBOARD";
-      if( set_mode_client_.call(offb_set_mode_) && offb_set_mode_.response.mode_sent){
-	ROS_INFO("Offboard enabled");
+    else{ // i am simulating
+      arm_cmd_.request.value = true;      
+      if( !current_state_.armed && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
+	if( arming_client_.call(arm_cmd_) && arm_cmd_.response.success){
+	  ROS_INFO("Vehicle armed");
+	}
+	last_request_ = ros::Time::now();
       }
-      last_request_ = ros::Time::now();
+      
+      if( current_state_.mode != "OFFBOARD" && (ros::Time::now() - last_request_ > ros::Duration(5.0))){
+	offb_set_mode_.request.custom_mode = "OFFBOARD";
+	if( set_mode_client_.call(offb_set_mode_) && offb_set_mode_.response.mode_sent){
+	  ROS_INFO("Offboard enabled");
+	}
+	last_request_ = ros::Time::now();
+      }
     }
+    //here
   }
-
+}
   
-  if(ctrl_mode_ == MODE_BODYRATE){
-    if (quadMode==1){
-      quadMode=2;
-      holdPos_ = mavPos_;
-      holdPos_(2)=0.0;
-    }
-    else if (quadMode==2){      
-      Eigen::Vector3d errorPos_, errorVel_, errorPos_noCA, errorVel_filtered;
-      Eigen::Matrix3d R_ref;
-      if(current_state_.mode.compare("OFFBOARD")==0 && current_state_.armed){
-	holdPos_(2)+=0.04;
-	if (holdPos_(2)>1.0){
-	  holdPos_(2)=1.0;
+void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){    
+  
+  //double t2=clock();
+  if (runAlg.compare("info")==0 && newDataFlag || tuneAtt || tuneRate){
+    
+    if (!tuneAtt && !tuneRate){    
+      if (quadMode==1){
+	holdPos_ = mavPos_;
+	holdPos_(2)=0.0;
+	
+	if(current_state_.armed || current_state_.mode.compare("OFFBOARD")==0){
+	  quadMode=2;
 	}
       }
-
-      errorPos_   = mavPos_ - holdPos_;
-      errorVel_   = mavVel_;    
-      errorSum_  += errorPos_;
-        
-      action_int_ = (Kint_.asDiagonal()*errorSum_);
-      if (action_int_.norm()>max_fb_acc_){
-	action_int_=(max_fb_acc_/ action_int_.norm())*action_int_;
+      else if(quadMode==2){      
+	Eigen::Vector3d errorPos_, errorVel_, errorPos_noCA, errorVel_filtered;
+	Eigen::Matrix3d R_ref;
+	if(current_state_.mode.compare("OFFBOARD")==0 && current_state_.armed){
+	  holdPos_(2)+=0.04;
+	  if (holdPos_(2)>1){
+	    holdPos_(2)=1;
+	  }
+	}
+	
+	errorPos_   = mavPos_ - holdPos_;
+	errorVel_   = mavVel_;    
+	errorSum_  += errorPos_;    
+	
+	action_int_ = (Kint_.asDiagonal()*errorSum_);
+	if (action_int_.norm()>max_fb_acc_){
+	  action_int_=(max_fb_acc_/ action_int_.norm())*action_int_;
+	}
+	if ((-action_int_.norm())<(-max_fb_acc_)){
+	  action_int_=-(max_fb_acc_ / action_int_.norm())*action_int_;
+	}
+	
+	/// Compute BodyRate commands using differential flatness
+	/// Controller based on Faessler 2017
+	a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_ + action_int_; //feedforward term for trajectory error
+	// if(a_fb(2) < -max_fb_acc_) a_fb(2) = -max_fb_acc_;
+	if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;    
+	
+	a_des = a_fb - g_;
+	
+	q_des = acc2quaternion(a_des, mavYaw_);
+	cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
+	cmdBodyRate_(2)=0;
+	
+	if (((targetPos_noCA-mavPos_).norm() < 0.02 && mavVel_.norm()<.25) && holdPos_(2)==1.0 && (holdPos_-mavPos_).norm()<0.25){
+	  quadMode=3;
+	  //quadMode=2; //stay in hold mode	   
+	}
+	else{
+	  ROS_INFO_THROTTLE(.5,"waiting until quad is still: %f, %f, %f,", (targetPos_noCA-mavPos_).norm(), (mavPos_-holdPos_).norm(), mavVel_.norm());
+	}
       }
-      else if ((-action_int_.norm())<(-max_fb_acc_)){
-	action_int_=-(max_fb_acc_ / action_int_.norm())*action_int_;
+      else if(quadMode==3){
+	computeBodyRateCmd(false);
       }
-        
-      /// Compute BodyRate commands using differential flatness
-      /// Controller based on Faessler 2017
-      a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_ + action_int_; //feedforward term for trajectory error
-      // if(a_fb(2) < -max_fb_acc_) a_fb(2) = -max_fb_acc_;
-      if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;    
-    
-      a_des = a_fb - g_;
-    
-      q_des = acc2quaternion(a_des, mavYaw_);
-      cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
-      
-      if ((targetPos_-mavPos_).norm() < .001 && mavVel_.norm()<.25){
-        quadMode=3;
-	//quadMode=2;
-      }
-      else{
-	ROS_INFO_THROTTLE(1,"waiting until quad is still");
-      }
-      // ROS_INFO("%d holding pos %f,%f,%f", quadMode, holdPos_(0), holdPos_(1), holdPos_(2));	
-    }    
-    else if(quadMode==3){
+    }
+    else if (tuneAtt || tuneRate){
       computeBodyRateCmd(false);
     }
     
     pubReferencePose();
     pubRateCommands();
-	
   }
-  ros::spinOnce();
-  }
+
+  //t2=((float)clock()-t2)/CLOCKS_PER_SEC;
+  //ROS_INFO_THROTTLE(1,"QM: %d cmd loop: %f", quadMode, t2);
 }
 
 void geometricCtrl::mavstateCallback(const mavros_msgs::State::ConstPtr& msg){
@@ -1194,8 +1242,8 @@ void geometricCtrl::pubRateCommands(){
   angularVelMsg_.header.stamp = ros::Time::now();
   angularVelMsg_.header.frame_id= "world";
   angularVelMsg_.body_rate.x = cmdBodyRate_(0);
-  angularVelMsg_.body_rate.y = cmdBodyRate_(1) * -1.0;
-  angularVelMsg_.body_rate.z = cmdBodyRate_(2) * -1.0;
+  angularVelMsg_.body_rate.y = -1*cmdBodyRate_(1);
+  angularVelMsg_.body_rate.z = -1*cmdBodyRate_(2);
   angularVelMsg_.type_mask = 128; //Ignore orientation messages
   angularVelMsg_.thrust = cmdBodyRate_(3);
   angularVelPub_.publish(angularVelMsg_);
@@ -1217,13 +1265,23 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     nh_.getParam("geometric_controller/attctrl_tau_p", attctrl_tau_p);
     nh_.getParam("geometric_controller/attctrl_tau_i", attctrl_tau_i);
     nh_.getParam("geometric_controller/attctrl_tau_d", attctrl_tau_d);
+
+    nh_.param<double>("geometric_controller/max_tau_i", max_tau_i, 0.5);
+    nh_.param<double>("geometric_controller/norm_thrust_const_", norm_thrust_const_, 0.1);
+    nh_.param<double>("geometric_controller/max_fb_acc_", max_fb_acc_, 5.0);
+    nh_.param<double>("geometric_controller/max_rollRate", max_rollRate, 10);
+    nh_.param<double>("geometric_controller/max_pitchRate", max_pitchRate, 10);
+    nh_.param<double>("geometric_controller/max_yawRate", max_yawRate, 10);
+
+    
     ROS_INFO_THROTTLE(3,"attctrl_tau_p=[%f, %f, %f], attctrl_tau_i=[%f, %f, %f], attctrl_tau_d=[%f, %f, %f] desiredAtt: [%f, %f, %f]", attctrl_tau_p[0], attctrl_tau_p[1], attctrl_tau_p[2], attctrl_tau_i[0], attctrl_tau_i[1], attctrl_tau_i[2], attctrl_tau_d[0], attctrl_tau_d[1], attctrl_tau_d[2],desiredAtt[0], desiredAtt[1], desiredAtt[2]);
     
     a_ref(0) = desiredAtt[0];
     a_ref(1) = desiredAtt[1];
     a_ref(2) = desiredAtt[2];
 
-    a_ref = 2.0*a_ref.normalized(); // prevent large accelerations
+    // chosen such that thrust is near hovering
+    a_ref = 4.0*a_ref.normalized(); // prevent large accelerations    
         
     a_des = a_ref;// - g_;
     q_des = acc2quaternion(a_des, mavYaw_);
@@ -1492,9 +1550,12 @@ Eigen::Vector4d geometricCtrl::attcontroller(Eigen::Vector4d &ref_att, Eigen::Ve
   error_attPub_.publish(errorQ);  
   
   signQe = std::copysign(1.0, qe(0));
+  //signQe_dot = std::copysign(1.0, qe_dot(0));
   
   actionAtt << signQe*qe(1), signQe*qe(2), signQe*qe(3);
+  //actionDotAtt<< signQe_dot*qe_dot(1), signQe_dot*qe_dot(2), signQe_dot*qe_dot(3);  
   sumAtt += actionAtt;
+  
   // prevent windup
   if (sumAtt(0)>max_tau_i){
     sumAtt(0)=max_tau_i;
@@ -1517,9 +1578,10 @@ Eigen::Vector4d geometricCtrl::attcontroller(Eigen::Vector4d &ref_att, Eigen::Ve
     sumAtt(2)=-max_tau_i;
   }
 
-  rollRate  = 2.0/attctrl_tau_p[0] * actionAtt(0) + 2.0/attctrl_tau_i[0]*sumAtt(0);
-  pitchRate = 2.0/attctrl_tau_p[1] * actionAtt(1) + 2.0/attctrl_tau_i[1]*sumAtt(1);
-  yawRate   = 2.0/attctrl_tau_p[2] * actionAtt(2) + 2.0/attctrl_tau_i[2]*sumAtt(2);
+  // remove uneccesarry calculations
+  rollRate  = 2.0/attctrl_tau_p[0] * actionAtt(0) + 2.0/attctrl_tau_i[0]*sumAtt(0);// + 2.0/attctrl_tau_d[0] * mavRate_(0);
+  pitchRate = 2.0/attctrl_tau_p[1] * actionAtt(1) + 2.0/attctrl_tau_i[1]*sumAtt(1);// + 2.0/attctrl_tau_d[1] * mavRate_(1);
+  yawRate   = 2.0/attctrl_tau_p[2] * actionAtt(2) + 2.0/attctrl_tau_i[2]*sumAtt(2);//+ 2.0/attctrl_tau_d[2] * mavRate_(2);
 
   if (rollRate>max_rollRate){
     ratecmd(0) = max_rollRate;
@@ -1550,7 +1612,6 @@ Eigen::Vector4d geometricCtrl::attcontroller(Eigen::Vector4d &ref_att, Eigen::Ve
   else{
     ratecmd(2)=yawRate;
   }
-
 
   
   rotmat = quat2RotMatrix(curr_att);

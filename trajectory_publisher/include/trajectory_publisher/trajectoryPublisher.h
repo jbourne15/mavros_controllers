@@ -73,6 +73,8 @@ private:
 
   trajectory motionPrimitives_;
 
+  bool newTraj;
+
   /* mav_trajectory_generation::Vertex::Vector vertices; */
   int dimension;// = 3;
   int derivative_to_optimize;// = mav_trajectory_generation::derivative_order::SNAP;

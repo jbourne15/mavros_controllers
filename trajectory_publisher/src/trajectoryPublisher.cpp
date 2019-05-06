@@ -35,6 +35,7 @@ trajectoryPublisher::trajectoryPublisher(const ros::NodeHandle& nh, const ros::N
   nh_.param<int>("trajectory_publisher/trajectoryID", target_trajectoryID_, 0);
   nh_.param<int>("trajectory_publisher/mode", mode_, 2);
 
+  newTraj=false;
   dimension = 3;
   derivative_to_optimize = mav_trajectory_generation::derivative_order::SNAP;
 
@@ -176,9 +177,9 @@ void trajectoryPublisher::getPolyTrajectory(void){
   // double v_max = 10;//6.0;
   // double v_max = 4;
   double v_max = 3;
-  const double a_max = 5;//10;
+  const double a_max = 2;//2.5;//10;
   // double j_max=9*(counter%2)+1;//10;//10*(counter%2)+1;
-  double j_max=10;
+  double j_max=3;
 
   counter++;
   std::cout<<"v_max: "<<v_max<<std::endl;
@@ -284,6 +285,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
   if (ts==1){
     //--- Creating Trajectories ---//
     nlOpt.getTrajectory(&trajectory_poly);
+    newTraj=true;
 
     //For a simple visualization:
     double distance = 2.0; // Distance by which to seperate additional markers. Set 0.0 to disable.
@@ -347,7 +349,7 @@ void trajectoryPublisher::moveReference() {
                + std::sin(theta_) * std::cos(theta_) * traj_axis_.cross(target_initpos)
                + (1 - std::cos(theta_)) * traj_axis_.dot(target_initpos) * traj_axis_;
       v_targ = traj_omega_ * traj_axis_.cross(p_targ); //TODO: This is wrong      
-    } else if (target_trajectoryID_ == 3) {// polynomial
+    } else if (target_trajectoryID_ == 3 && newTraj) {// polynomial      
         int derivativeP = mav_trajectory_generation::derivative_order::POSITION;
 	int derivativeV = mav_trajectory_generation::derivative_order::VELOCITY;
 	int derivativeA = mav_trajectory_generation::derivative_order::ACCELERATION;
