@@ -1183,8 +1183,8 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
 	cmdBodyRate_(2)=0;
 	
-	if (((targetPos_noCA-mavPos_).norm() < 0.02 && mavVel_.norm()<.25) && holdPos_(2)==1.0 && (holdPos_-mavPos_).norm()<0.25){
-	  quadMode=3;
+	if (((targetPos_noCA-mavPos_).norm() < 0.05 && mavVel_.norm()<.35) && holdPos_(2)==1.0 && (holdPos_-mavPos_).norm()<0.35){
+	  quadMode=3;	  
 	  //quadMode=2; //stay in hold mode	   
 	}
 	else{
