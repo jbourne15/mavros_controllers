@@ -86,11 +86,11 @@ class geometricCtrl
     ros::Timer cmdloop_timer_, statusloop_timer_, arming_timer_, checkData_timer_;
     ros::Time last_request_, reference_request_now_, reference_request_last_;
 
-    int mode, tpvh;
+    int mode, tpvh, target_trajectoryID_;
     int AGENT_NUMBER;
     std::vector<double> desiredRate, desiredAtt, attctrl_tau_p, attctrl_tau_d, attctrl_tau_i;
     std::vector<ros::Time> agentInfo_time;
-    bool tuneRate, tuneAtt, avoiding, timeFlag, obstaclesOn;
+    bool tuneRate, tuneAtt, avoiding, timeFlag, obstaclesOn, tunePosVel;
     ros::Time finishedAvoid_time, avoid_time;
     mavros_msgs::RCIn  RCin;
     int num_rotors_;

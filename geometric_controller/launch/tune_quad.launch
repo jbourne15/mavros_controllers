@@ -1,6 +1,6 @@
 <launch>
-  <arg name="bag_name" default="tuneBagQ1"/>
-  <arg name="AGENT_NUMBER" value="1"/>
+  <arg name="bag_name" default="tuneBagQ2"/>
+  <arg name="AGENT_NUMBER" value="2"/>
   <include file="$(find mavros)/launch/px4.launch">
     <arg name="tgt_system" default="$(arg AGENT_NUMBER)" />
   </include>

@@ -16,6 +16,8 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
   mode=10000;
   nh_.param<int>("geometric_controller/agent_number", AGENT_NUMBER, 1);
+  nh_.param<bool>("geometric_controller/tunePosVel", tunePosVel, false);
+  nh_.param<int>("trajectory_publisher/trajectoryID", target_trajectoryID_, -1);
   
   /// Target State is the reference state received from the trajectory
   /// goalState is the goal the controller is trying to reach
@@ -622,7 +624,16 @@ void geometricCtrl::wait4Home(void){
       break;
     }
 
-    ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData, (runAlg.compare("info")!=0));
+    if (tunePosVel && newVelData[AGENT_NUMBER-1] && newPosData[AGENT_NUMBER-1] && newRefData && g_geodetic_converter.isInitialised() && runAlg.compare("info")==0){
+      break;
+    }
+    else if (tunePosVel){
+      ROS_INFO_THROTTLE(5,"[%d ctrl] tunePosVel checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), newPosData[AGENT_NUMBER-1], newVelData[AGENT_NUMBER-1], newRefData, (runAlg.compare("info")==0));
+    }
+    else{
+      ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData, (runAlg.compare("info")!=0));
+	
+    }
     
   } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData || (runAlg.compare("info")!=0)) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
   
@@ -1139,7 +1150,6 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
   
   //double t2=clock();
   if (runAlg.compare("info")==0 && newDataFlag || tuneAtt || tuneRate){
-    
     if (!tuneAtt && !tuneRate){    
       if (quadMode==1){
 	holdPos_ = mavPos_;
@@ -1184,8 +1194,10 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	cmdBodyRate_(2)=0;
 	
 	if (((targetPos_noCA-mavPos_).norm() < 0.05 && mavVel_.norm()<.35) && holdPos_(2)==1.0 && (holdPos_-mavPos_).norm()<0.35){
-	  quadMode=3;	  
-	  //quadMode=2; //stay in hold mode	   
+	  quadMode=3;
+	  if(target_trajectoryID_==0){
+	    quadMode=2; //stay in hold mode
+	  }
 	}
 	else{
 	  ROS_INFO_THROTTLE(.5,"waiting until quad is still: %f, %f, %f,", (targetPos_noCA-mavPos_).norm(), (mavPos_-holdPos_).norm(), mavVel_.norm());
@@ -1281,7 +1293,7 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     a_ref(2) = desiredAtt[2];
 
     // chosen such that thrust is near hovering
-    a_ref = 4.0*a_ref.normalized(); // prevent large accelerations    
+    a_ref = 2.0*a_ref.normalized(); // prevent large accelerations    
         
     a_des = a_ref;// - g_;
     q_des = acc2quaternion(a_des, mavYaw_);
