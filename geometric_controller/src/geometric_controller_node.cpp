@@ -122,6 +122,16 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
    xt.set_size(numAgents,3); // xyz  
    set_all_elements(xt,0);
 
+   if (tunePosVel){
+     for(int i=0;i<numAgents; i++){
+       if(i!=(AGENT_NUMBER-1)){
+	 xt(0)= 1000;
+	 xt(1)= 1000;
+	 xt(2)= 1000;
+       }
+     }
+   }
+
    vt.set_size(numAgents,3); // xyz  
    set_all_elements(vt,0);  
 
@@ -1200,7 +1210,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	  }	  
 	}
 	else{
-	  ROS_INFO_THROTTLE(.5,"waiting until quad is still: %f, %f, %f,", (targetPos_noCA-mavPos_).norm(), (mavPos_-holdPos_).norm(), mavVel_.norm());
+	  ROS_INFO_THROTTLE(.5,"quadMode= %d, waiting until quad is still: %f, %f, %f,", quadMode, (targetPos_noCA-mavPos_).norm(), (mavPos_-holdPos_).norm(), mavVel_.norm());
 	}
       }
       else if(quadMode==3){

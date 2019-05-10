@@ -355,18 +355,16 @@ void trajectoryPublisher::moveReference() {
 	int derivativeA = mav_trajectory_generation::derivative_order::ACCELERATION;
 
 	p_targ = trajectory_poly.evaluate(trigger_time_,derivativeP);
-	v_targ = trajectory_poly.evaluate(trigger_time_,derivativeV);	
+	v_targ = trajectory_poly.evaluate(trigger_time_,derivativeV);
 
-	if ((p_targ.isApprox(v_targ) && v_targ.isApprox(p_targ)) || quadMode<3){
-	  p_targ = target_initpos;
-	  v_targ.setZero();
-	  // target_trajectoryID_=0;
-	  getPolyTrajectory();
-	  if (quadMode<3){
-	    ros::Duration(.1).sleep();
+	if (p_targ.isApprox(v_targ) && v_targ.isApprox(p_targ))
+	  {
+	    p_targ = target_initpos;
+	    v_targ.setZero();
+	    // target_trajectoryID_=0;	    
+	    getPolyTrajectory();
 	  }
-	}
-	
+	  
 	markers_pub.publish(markers);
     }
   }
