@@ -1227,7 +1227,7 @@ void geometricCtrl::mavstateCallback(const mavros_msgs::State::ConstPtr& msg){
 }
 
 void geometricCtrl::statusloopCallback(const ros::TimerEvent& event){
-
+  nh_.setParam(agentName+"/quadMode", quadMode);
 }
 
 void geometricCtrl::pubReferencePose(){

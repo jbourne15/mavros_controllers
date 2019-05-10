@@ -56,7 +56,7 @@ private:
   geometry_msgs::TwistStamped refState_;
 
   int counter;
-  int mode_;
+  int mode_, quadMode;
   Eigen::Vector3d target_initpos;
   Eigen::Vector3d traj_axis_;
   Eigen::Vector3d p_targ, v_targ;

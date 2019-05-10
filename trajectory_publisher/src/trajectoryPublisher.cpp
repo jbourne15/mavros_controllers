@@ -357,11 +357,14 @@ void trajectoryPublisher::moveReference() {
 	p_targ = trajectory_poly.evaluate(trigger_time_,derivativeP);
 	v_targ = trajectory_poly.evaluate(trigger_time_,derivativeV);	
 
-	if (p_targ.isApprox(v_targ) && v_targ.isApprox(p_targ)){
+	if ((p_targ.isApprox(v_targ) && v_targ.isApprox(p_targ)) || quadMode<3){
 	  p_targ = target_initpos;
 	  v_targ.setZero();
 	  // target_trajectoryID_=0;
 	  getPolyTrajectory();
+	  if (quadMode<3){
+	    ros::Duration(.1).sleep();
+	  }
 	}
 	
 	markers_pub.publish(markers);
@@ -433,6 +436,7 @@ void trajectoryPublisher::pubrefState(){
 
 void trajectoryPublisher::loopCallback(const ros::TimerEvent& event){
   //Slow Loop publishing trajectory information
+  nh_.param<int>(agentName+"/quadMode", quadMode, -1);
   trajectoryPub_.publish(refTrajectory_);
 }
 
