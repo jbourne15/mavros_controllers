@@ -1193,11 +1193,11 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
 	cmdBodyRate_(2)=0;
 	
-	if (((targetPos_noCA-mavPos_).norm() < 0.05 && mavVel_.norm()<.35) && holdPos_(2)==1.0 && (holdPos_-mavPos_).norm()<0.35){
+	if (((targetPos_noCA-mavPos_).norm() < 0.1 && mavVel_.norm()<.35) && holdPos_(2)==1.0 && (holdPos_-mavPos_).norm()<0.45){
 	  quadMode=3;
 	  if(target_trajectoryID_==0){
 	    quadMode=2; //stay in hold mode
-	  }
+	  }	  
 	}
 	else{
 	  ROS_INFO_THROTTLE(.5,"waiting until quad is still: %f, %f, %f,", (targetPos_noCA-mavPos_).norm(), (mavPos_-holdPos_).norm(), mavVel_.norm());
@@ -1244,9 +1244,16 @@ void geometricCtrl::pubReferencePose(){
   referencePosePub_.publish(referencePoseMsg_);
 
   referencePoseMsgCA_=referencePoseMsg_;
-  referencePoseMsgCA_.pose.position.x = targetPos_(0);
-  referencePoseMsgCA_.pose.position.y = targetPos_(1);
-  referencePoseMsgCA_.pose.position.z = targetPos_(2);
+  if (quadMode<3){
+    referencePoseMsgCA_.pose.position.x = holdPos_(0);
+    referencePoseMsgCA_.pose.position.y = holdPos_(1);
+    referencePoseMsgCA_.pose.position.z = holdPos_(2);
+  }
+  else{
+    referencePoseMsgCA_.pose.position.x = targetPos_(0);
+    referencePoseMsgCA_.pose.position.y = targetPos_(1);
+    referencePoseMsgCA_.pose.position.z = targetPos_(2);
+  }
   referencePosePubCA_.publish(referencePoseMsgCA_);
 }
 
