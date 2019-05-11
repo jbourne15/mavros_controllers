@@ -35,6 +35,7 @@
 #include <mav_planning_msgs/PolynomialTrajectory4D.h>
 
 #include "trajectory_publisher/trajectory.h"
+#include <geometry_msgs/AccelStamped.h>
 
 using namespace std;
 using namespace Eigen;
@@ -45,7 +46,7 @@ private:
   ros::NodeHandle nh_private_;
   ros::Subscriber local_sub, state_sub;
   ros::Publisher trajectoryPub_;
-  ros::Publisher referencePub_;
+  ros::Publisher referencePub_, accelReference_pub;
   ros::Publisher markers_pub;
   ros::ServiceServer trajtriggerServ_;
   ros::Timer trajloop_timer_;
@@ -54,12 +55,13 @@ private:
 
   nav_msgs::Path refTrajectory_;
   geometry_msgs::TwistStamped refState_;
+  geometry_msgs::AccelStamped refAccel;
 
   int counter;
   int mode_, quadMode;
   Eigen::Vector3d target_initpos;
   Eigen::Vector3d traj_axis_;
-  Eigen::Vector3d p_targ, v_targ;
+  Eigen::Vector3d p_targ, v_targ, acc_targ;
   Eigen::Vector3d mavPos_;
   Eigen::Vector4d mavAtt_;
   std::string agentName;
