@@ -23,6 +23,8 @@ trajectoryPublisher::trajectoryPublisher(const ros::NodeHandle& nh, const ros::N
 
   local_sub   = nh_.subscribe(agentName+"/gps_pose", 1, &trajectoryPublisher::localCallback, this, ros::TransportHints().tcpNoDelay()); // from geodetic
   state_sub   = nh_.subscribe(agentName+"/mavros/state", 1, &trajectoryPublisher::stateCallback, this, ros::TransportHints().tcpNoDelay());
+
+  quadMod_sub   = nh_.subscribe(agentName+"/quadMode", 1, &trajectoryPublisher::quadModeCallback, this, ros::TransportHints().tcpNoDelay());
   
   trajloop_timer_ = nh_.createTimer(ros::Duration(1), &trajectoryPublisher::loopCallback, this);
   refloop_timer_ = nh_.createTimer(ros::Duration(0.01), &trajectoryPublisher::refCallback, this);
@@ -73,7 +75,13 @@ void trajectoryPublisher::localCallback(const geometry_msgs::PoseWithCovarianceS
   }
 }
 
+void trajectoryPublisher::quadModeCallback(const std_msgs::Int16 &msg){
+  quadMode=msg.data;
+}
+
+
 void trajectoryPublisher::stateCallback(const mavros_msgs::State &msg){
+  //nh_.param<int>(agentName+"/quadMode", quadMode, -1);
   state = msg;
 }
 
@@ -188,7 +196,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
   std::vector<double> segment_times;
   // double v_max = 10;//6.0;
   // double v_max = 4;
-  double v_max = 3;
+  double v_max = 3;  
   double a_max = 2;//2.5;//10;
   // double j_max=9*(counter%2)+1;//10;//10*(counter%2)+1;
   double j_max=3;
@@ -335,8 +343,10 @@ void trajectoryPublisher::setTrajectoryTheta(double in) {
 void trajectoryPublisher::moveReference() {
   curr_time_ = ros::Time::now();
 
-  if (state.mode.compare("OFFBOARD")!=0 || !state.armed){
-    start_time_ = ros::Time::now();
+  //nh_.param<int>(agentName+"/quadMode", quadMode, -1);
+  
+  if (state.mode.compare("OFFBOARD")!=0 || !state.armed || quadMode<3){
+    start_time_ = curr_time_;
   }
   
   trigger_time_ = (curr_time_ - start_time_).toSec();
@@ -379,14 +389,18 @@ void trajectoryPublisher::moveReference() {
 	v_targ   = trajectory_poly.evaluate(trigger_time_,derivativeV);
 	acc_targ = trajectory_poly.evaluate(trigger_time_,derivativeA);
 
-	if (p_targ.isApprox(v_targ) && v_targ.isApprox(p_targ)){
-	  p_targ = target_initpos;
-	  v_targ.setZero();
-	  acc_targ.setZero();
-	  // target_trajectoryID_=0;
+	if (quadMode==2){
 	  getPolyTrajectory();
+	  //ros::Duration(2).sleep();	  
 	}
-	
+	else if (p_targ.isApprox(v_targ) && v_targ.isApprox(p_targ))
+	  {
+	    p_targ = target_initpos;
+	    v_targ.setZero();
+	    acc_targ.setZero();
+	    // target_trajectoryID_=0;	    
+	    getPolyTrajectory();	    
+	  }
 	markers_pub.publish(markers);
     }
   }
@@ -463,8 +477,7 @@ void trajectoryPublisher::pubrefState(){
 }
 
 void trajectoryPublisher::loopCallback(const ros::TimerEvent& event){
-  //Slow Loop publishing trajectory information
-  nh_.param<int>(agentName+"/quadMode", quadMode, -1);
+  //Slow Loop publishing trajectory information  
   trajectoryPub_.publish(refTrajectory_);
 }
 

@@ -39,6 +39,7 @@
 #include <mavros_msgs/SetMavFrame.h>
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include <sensor_msgs/Imu.h>
+#include <std_msgs/Int16.h>
 
 #include <RVO.h>
 #include <dlib/matrix.h>
@@ -75,7 +76,7 @@ class geometricCtrl
     ros::Publisher des_attRefPub_, error_attPub_;
     ros::Publisher cur_attRefPub_;
     ros::Publisher mavPosVelPub_;
-    ros::Publisher mavAccelPub_;
+    ros::Publisher mavAccelPub_, quadModePub_;
     ros::Publisher bPub_;
     ros::Publisher obstaclesPub_;
     std::vector<ros::Publisher> agentPos_pub, agentVel_pub;
@@ -112,7 +113,7 @@ class geometricCtrl
     std::vector<bool> newPosData, newVelData;
     bool newRefData, avoidAgents, newDataFlag;    
     int numAgents;
-    int quadMode;
+    std_msgs::Int16 quadMode;
     geometry_msgs::TwistStamped b_msg;
 
     Eigen::Vector4d ratecmd;

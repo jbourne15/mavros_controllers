@@ -23,7 +23,8 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   /// goalState is the goal the controller is trying to reach
   // goalPos_ << 2*(AGENT_NUMBER-1), 0.0, 1.5; //Initial Position // needs check so that my quads don't freak out
 
-  quadMode=1;
+
+  quadMode.data=1;
   targetVel_ << 0.0, 0.0, 0.0;
   mavYaw_ = M_PI/2.0;
   g_ << 0.0, 0.0, -9.8;
@@ -67,6 +68,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<double>("geometric_controller/max_rollRate", max_rollRate, 10);
   nh_.param<double>("geometric_controller/max_pitchRate", max_pitchRate, 10);
   nh_.param<double>("geometric_controller/max_yawRate", max_yawRate, 10);
+
 
   use_gzstates_ = false;
 
@@ -125,9 +127,9 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
    if (tunePosVel){
      for(int i=0;i<numAgents; i++){
        if(i!=(AGENT_NUMBER-1)){
-	 xt(0)= 1000;
-	 xt(1)= 1000;
-	 xt(2)= 1000;
+	 xt(i,0)= 1000;
+	 xt(i,1)= 1000;
+	 xt(i,2)= 1000;
        }
      }
    }
@@ -157,6 +159,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
    mavtwistSub_ = nh_.subscribe(agentName+"/mavros/local_position/velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
     // mavtwistSub_ = nh_.subscribe(agentName+"/local_velocity", 1, &geometricCtrl::mavtwistCallback, this,ros::TransportHints().tcpNoDelay());
+
   
    gzmavposeSub_ = nh_.subscribe("/gazebo/model_states", 1, &geometricCtrl::gzmavposeCallback, this, ros::TransportHints().tcpNoDelay());
 
@@ -166,7 +169,9 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
    cmdloop_timer_    = nh_.createTimer(ros::Duration(0.01), &geometricCtrl::cmdloopCallback, this); 
    statusloop_timer_ = nh_.createTimer(ros::Duration(1), &geometricCtrl::statusloopCallback, this); 
    arming_timer_     = nh_.createTimer(ros::Duration(.2), &geometricCtrl::armingCallback, this);    
-   checkData_timer_  = nh_.createTimer(ros::Duration(5), &geometricCtrl::checkDataCallback, this); 
+   checkData_timer_  = nh_.createTimer(ros::Duration(5), &geometricCtrl::checkDataCallback, this);
+
+   quadModePub_ = nh_.advertise<std_msgs::Int16>(agentName+"/quadMode", 1);
 
    for(int i=0;i<numAgents;++i){    
      std::string topicName = "agent"+std::to_string(AGENT_NUMBER)+"_"+std::to_string(i+1);
@@ -215,9 +220,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
    if (!tuneRate && !tuneAtt){
      setupScenario();
    }
-
    targetPos_ << xt(AGENT_NUMBER-1,0), xt(AGENT_NUMBER-1,1), 1;
-
   
    // ros::Duration(15.0).sleep(); // sleep for half a second
  }
@@ -994,6 +997,7 @@ void geometricCtrl::flattargetCallback(const controller_msgs::FlatTarget& msg) {
 }
 
 void geometricCtrl::localCallback(const geometry_msgs::PoseWithCovarianceStamped &msg){
+  
   if (std::isfinite(msg.pose.pose.position.x) && std::isfinite(msg.pose.pose.position.y) && std::isfinite(msg.pose.pose.position.z)){
     mavPos_(0) = msg.pose.pose.position.x;
     mavPos_(1) = msg.pose.pose.position.y;
@@ -1161,15 +1165,15 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
   //double t2=clock();
   if (runAlg.compare("info")==0 && newDataFlag || tuneAtt || tuneRate){
     if (!tuneAtt && !tuneRate){    
-      if (quadMode==1){
+      if (quadMode.data==1){
 	holdPos_ = mavPos_;
 	holdPos_(2)=0.0;
 	
-	if(current_state_.armed || current_state_.mode.compare("OFFBOARD")==0){
-	  quadMode=2;
+	if((current_state_.armed || current_state_.mode.compare("OFFBOARD")==0) && runAlg.compare("info")==0){
+	  quadMode.data=2;
 	}
       }
-      else if(quadMode==2){      
+      else if(quadMode.data==2){      
 	Eigen::Vector3d errorPos_, errorVel_, errorPos_noCA, errorVel_filtered;
 	Eigen::Matrix3d R_ref;
 	if(current_state_.mode.compare("OFFBOARD")==0 && current_state_.armed){
@@ -1203,17 +1207,19 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
 	cmdBodyRate_(2)=0;
 	
-	if (((targetPos_noCA-mavPos_).norm() < 0.1 && mavVel_.norm()<.35) && holdPos_(2)==1.0 && (holdPos_-mavPos_).norm()<0.45){
-	  quadMode=3;
+	if (((targetPos_noCA-mavPos_).norm() < 0.1 && mavVel_.norm()<.35) && mavPos_(2)>0.6 && holdPos_(2)==1.0){	  
 	  if(target_trajectoryID_==0){
-	    quadMode=2; //stay in hold mode
-	  }	  
+	    quadMode.data=2; //stay in hold mode
+	  }
+	  else{
+	    quadMode.data=3;
+	  }
 	}
 	else{
-	  ROS_INFO_THROTTLE(.5,"quadMode= %d, waiting until quad is still: %f, %f, %f,", quadMode, (targetPos_noCA-mavPos_).norm(), (mavPos_-holdPos_).norm(), mavVel_.norm());
+	  ROS_INFO_THROTTLE(.5,"quadMode= %d, waiting until quad is still: targetPos_noCA-mavPos_=%f, mavVel=%f, mavPos_(2)=%f,", quadMode.data, (targetPos_noCA-mavPos_).norm(), mavVel_.norm(), mavPos_(2));
 	}
       }
-      else if(quadMode==3){
+      else if(quadMode.data==3){
 	computeBodyRateCmd(false);
       }
     }
@@ -1224,6 +1230,8 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
     pubReferencePose();
     pubRateCommands();
   }
+  
+  quadModePub_.publish(quadMode);
 
   //t2=((float)clock()-t2)/CLOCKS_PER_SEC;
   //ROS_INFO_THROTTLE(1,"QM: %d cmd loop: %f", quadMode, t2);
@@ -1232,12 +1240,11 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 void geometricCtrl::mavstateCallback(const mavros_msgs::State::ConstPtr& msg){
   current_state_ = *msg;
   if (current_state_.mode.compare("OFFBOARD")!=0 || !current_state_.armed){
-    quadMode=1;
+    quadMode.data=1;
   }    
 }
 
-void geometricCtrl::statusloopCallback(const ros::TimerEvent& event){
-  nh_.setParam(agentName+"/quadMode", quadMode);
+void geometricCtrl::statusloopCallback(const ros::TimerEvent& event){  
 }
 
 void geometricCtrl::pubReferencePose(){
@@ -1254,7 +1261,7 @@ void geometricCtrl::pubReferencePose(){
   referencePosePub_.publish(referencePoseMsg_);
 
   referencePoseMsgCA_=referencePoseMsg_;
-  if (quadMode<3){
+  if (quadMode.data<3){
     referencePoseMsgCA_.pose.position.x = holdPos_(0);
     referencePoseMsgCA_.pose.position.y = holdPos_(1);
     referencePoseMsgCA_.pose.position.z = holdPos_(2);

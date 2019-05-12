@@ -31,6 +31,7 @@
 #include <geometry_msgs/TwistStamped.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <std_srvs/SetBool.h>
+#include <std_msgs/Int16.h>
 #include <nav_msgs/Path.h>
 #include <mav_planning_msgs/PolynomialTrajectory4D.h>
 
@@ -44,7 +45,7 @@ class trajectoryPublisher
 private:
   ros::NodeHandle nh_;
   ros::NodeHandle nh_private_;
-  ros::Subscriber local_sub, state_sub;
+  ros::Subscriber local_sub, state_sub, quadMod_sub;
   ros::Publisher trajectoryPub_;
   ros::Publisher referencePub_, accelReference_pub;
   ros::Publisher markers_pub;
@@ -58,7 +59,7 @@ private:
   geometry_msgs::AccelStamped refAccel;
 
   int counter;
-  int mode_, quadMode;
+  int mode_,quadMode;
   Eigen::Vector3d target_initpos;
   Eigen::Vector3d traj_axis_;
   Eigen::Vector3d p_targ, v_targ, acc_targ;
@@ -98,6 +99,7 @@ public:
   void stateCallback(const mavros_msgs::State &msg);
   void localCallback(const geometry_msgs::PoseWithCovarianceStamped &msg);
   geometry_msgs::PoseStamped vector3d2PoseStampedMsg(Eigen::Vector3d position, Eigen::Vector4d orientation);
+  void quadModeCallback(const std_msgs::Int16 &msg);
   Eigen::Vector3d getTargetPosition();
   void loopCallback(const ros::TimerEvent& event);
   void refCallback(const ros::TimerEvent& event);
