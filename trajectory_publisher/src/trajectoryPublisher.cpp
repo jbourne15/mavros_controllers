@@ -11,7 +11,12 @@ trajectoryPublisher::trajectoryPublisher(const ros::NodeHandle& nh, const ros::N
   nh_private_(nh_private),
   motionPrimitives_(0.1) {
 
+  nh_.param<int>("geometric_controller/agent_number", AGENT_NUMBER, 1);
   nh_.setParam("/uav1/quad_vis/marker_scale", 1.5);
+  nh_.setParam("/uav2/quad_vis/marker_scale", 1.5);
+  nh_.setParam("/uav3/quad_vis/marker_scale", 1.5);
+  nh_.setParam("/uav4/quad_vis/marker_scale", 1.5);
+  nh_.setParam("/uav5/quad_vis/marker_scale", 1.5);
   
   trajectoryPub_ = nh_.advertise<nav_msgs::Path>("reference/trajectory", 1);
   referencePub_ = nh_.advertise<geometry_msgs::TwistStamped>("reference/setpoint", 1);
@@ -112,15 +117,15 @@ void trajectoryPublisher::setTrajectory(int ID) {
       initpos << 0.0, radius, 0.0;
       break;
     case TRAJ_POLY:
-      getPolyTrajectory();
+      getPolyTrajectory(); // heart like traj
       break;      
     case (TRAJ_POLY+1):
-      getPolyTrajectory();
+      getPolyTrajectory(); // straight line with static obstacle
+      break;
+  case (TRAJ_POLY+2):
+      getPolyTrajectory(); // straight line no obstacle
       break;    
   }
-  // std::cout<<initpos<<", "<<ID<<std::endl;
-  // std::cout<<initpos<<", "<<ID<<std::endl;
-  // std::cout<<initpos<<", "<<ID<<std::endl;
   setTrajectory(ID, omega, axis, radius, initpos);
 }
 
@@ -157,7 +162,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
     vertices.push_back(middle4);
 
   }
-  else if (target_trajectoryID_ == 4){
+  else if (target_trajectoryID_ == 4 || target_trajectoryID_ == 5){
 
     middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(1,0,1));
     middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,0));
@@ -187,7 +192,6 @@ void trajectoryPublisher::getPolyTrajectory(void){
 
   end.makeStartOrEnd(Eigen::Vector3d(mavPos_(0),mavPos_(1),1), derivative_to_optimize);
   vertices.push_back(end);
-
   
   
   // end.makeStartOrEnd(Eigen::Vector3d(0,0,2), derivative_to_optimize);
@@ -246,7 +250,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
   parameters.time_alloc_method =
     mav_trajectory_generation::NonlinearOptimizationParameters::kRichterTimeAndConstraints;
   }
-  else if (target_trajectoryID_ == 4){
+  else if (target_trajectoryID_ == 4 || target_trajectoryID_ == 5){
     parameters.time_alloc_method =
       mav_trajectory_generation::NonlinearOptimizationParameters::kMellingerOuterLoop;
     parameters.algorithm = nlopt::LD_LBFGS;
@@ -321,7 +325,38 @@ void trajectoryPublisher::getPolyTrajectory(void){
     std::string frame_id = "world";
 
     // From Trajectory class:
+    
     mav_trajectory_generation::drawMavTrajectory(trajectory_poly, distance, frame_id, &markers);
+
+    std_msgs::ColorRGBA trajColor;
+    if (AGENT_NUMBER == 1)
+      {	    
+	trajColor = mav_visualization::Color::Green();
+      }
+    else if (AGENT_NUMBER == 2)
+      {
+	trajColor = mav_visualization::Color::Blue();
+      }
+    else if (AGENT_NUMBER == 3)
+      {
+	trajColor = mav_visualization::Color::Pink();
+      }
+    else if (AGENT_NUMBER == 4)
+      {
+	trajColor = mav_visualization::Color::Teal();
+      }
+    else if (AGENT_NUMBER == 5)
+      {
+	trajColor = mav_visualization::Color::Orange();
+      }
+    else{
+      trajColor = mav_visualization::Color::Yellow();	
+    }
+
+    for(int i=0; i<markers.markers.size(); i++){
+	markers.markers[i].color = trajColor;	
+    }
+
     ros::Publisher markers_pub = nh_.advertise<visualization_msgs::MarkerArray>("/trajectory", 1);
     start_time_ = ros::Time::now();
   }
@@ -380,7 +415,7 @@ void trajectoryPublisher::moveReference() {
                + std::sin(theta_) * std::cos(theta_) * traj_axis_.cross(target_initpos)
                + (1 - std::cos(theta_)) * traj_axis_.dot(target_initpos) * traj_axis_;
       v_targ = traj_omega_ * traj_axis_.cross(p_targ); //TODO: This is wrong      
-    } else if ((target_trajectoryID_ == 3 || target_trajectoryID_ == 4) && newTraj) {// polynomial      
+    } else if ((target_trajectoryID_ == 3 || target_trajectoryID_ == 4 || target_trajectoryID_ == 5) && newTraj) {// polynomial      
         int derivativeP = mav_trajectory_generation::derivative_order::POSITION;
 	int derivativeV = mav_trajectory_generation::derivative_order::VELOCITY;
 	int derivativeA = mav_trajectory_generation::derivative_order::ACCELERATION;

@@ -691,13 +691,7 @@ void geometricCtrl::setupScenario(void) {
   sim->setTimeStep(.01f);
   
   // neighborDist,maxNeighbors,timeHorizon,timeHorizonObst,radius,maxSpeed,
-  if(target_trajectoryID_==4){  // outdoor test
-    sim->setAgentDefaults(30.0f, numAgents*2, 6.0f, 3.0f, 1, 1.1*v_max);
-  }
-  else{
-    sim->setAgentDefaults(30.0f, numAgents*2, 5.0f, 2.5f, radius, 1.1*v_max);
-  }
-
+  sim->setAgentDefaults(30.0f, numAgents*2, 15.0f, 3.0f, 1.25, 1.1*v_max);
   
 
   for (int i=0;i<numAgents; i++){

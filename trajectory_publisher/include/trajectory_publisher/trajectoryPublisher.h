@@ -34,6 +34,7 @@
 #include <std_msgs/Int16.h>
 #include <nav_msgs/Path.h>
 #include <mav_planning_msgs/PolynomialTrajectory4D.h>
+#include <mav_visualization/helpers.h>
 
 #include "trajectory_publisher/trajectory.h"
 #include <geometry_msgs/AccelStamped.h>
@@ -58,7 +59,7 @@ private:
   geometry_msgs::TwistStamped refState_;
   geometry_msgs::AccelStamped refAccel;
 
-  int counter;
+  int counter, AGENT_NUMBER;
   int mode_,quadMode;
   Eigen::Vector3d target_initpos;
   Eigen::Vector3d traj_axis_;
