@@ -146,11 +146,10 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
    vt.set_size(numAgents,3); // xyz  
    set_all_elements(vt,0);  
 
-   nh_.param<double>("/v_max", v_max, 3);
+   nh_.param<double>("/v_max", v_max, 2);
    nh_.param<bool>("/avoidAgents", avoidAgents, true);
 
-
-  source_sub = nh_.subscribe("/agent_source_data",1,&geometricCtrl::sourceCallback,this,ros::TransportHints().tcpNoDelay());
+   source_sub = nh_.subscribe("/agent_source_data",1,&geometricCtrl::sourceCallback,this,ros::TransportHints().tcpNoDelay());
 
   rcSub_ = nh_.subscribe(agentName+"/mavros/rc/in",1,&geometricCtrl::rc_command_callback,this,ros::TransportHints().tcpNoDelay());
   referenceSub_=nh_.subscribe(agentName+"/reference/setpoint",1, &geometricCtrl::targetCallback,this,ros::TransportHints().tcpNoDelay());

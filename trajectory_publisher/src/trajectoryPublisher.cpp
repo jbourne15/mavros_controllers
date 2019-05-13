@@ -37,6 +37,9 @@ trajectoryPublisher::trajectoryPublisher(const ros::NodeHandle& nh, const ros::N
   nh_.param<double>("trajectory_publisher/updaterate", controlUpdate_dt_, 0.01);
   nh_.param<int>("trajectory_publisher/trajectoryID", target_trajectoryID_, 0);
   nh_.param<int>("trajectory_publisher/mode", mode_, 2);
+  nh_.param<double>("/v_max", v_max, 2);
+  nh_.param<double>("/a_max", a_max, 2);
+  nh_.param<double>("/j_max", j_max, 3);
 
   newTraj=false;
   dimension = 3;
@@ -194,12 +197,9 @@ void trajectoryPublisher::getPolyTrajectory(void){
   // 3. compute the segment times
   // std::vector<double> segment_times(vertices.size()-1,50);
   std::vector<double> segment_times;
-  // double v_max = 10;//6.0;
-  // double v_max = 4;
-  double v_max = 3;  
-  double a_max = 2;//2.5;//10;
-  // double j_max=9*(counter%2)+1;//10;//10*(counter%2)+1;
-  double j_max=3;
+  //double v_max = 2;
+  //double a_max = 2;
+  //double j_max=3;
 
   counter++;
   std::cout<<"v_max: "<<v_max<<std::endl;
@@ -250,7 +250,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
     parameters.time_alloc_method =
       mav_trajectory_generation::NonlinearOptimizationParameters::kMellingerOuterLoop;
     parameters.algorithm = nlopt::LD_LBFGS;
-    std::fill (segment_times.begin(),segment_times.end(),3);
+    std::fill (segment_times.begin(),segment_times.end(),6);
   }
 
   // parameters.algorithm = nlopt::LD_LBFGS;

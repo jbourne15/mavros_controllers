@@ -67,6 +67,7 @@ private:
   Eigen::Vector4d mavAtt_;
   std::string agentName;
   double traj_radius_, traj_omega_;
+  double v_max,a_max,j_max;
   double theta_ = 0.0;
   double controlUpdate_dt_;
   double trigger_time_;
