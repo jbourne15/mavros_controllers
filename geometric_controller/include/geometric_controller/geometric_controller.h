@@ -25,6 +25,8 @@
 #include <geometry_msgs/Vector3Stamped.h>
 #include <geometry_msgs/AccelStamped.h>
 #include <geometry_msgs/QuaternionStamped.h>
+#include "enif_iuc/AgentSource.h"
+#include "mps_driver/MPS.h"
 #include <visualization_msgs/Marker.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
@@ -70,7 +72,7 @@ class geometricCtrl
     ros::Subscriber mavstateSub_;
     ros::Subscriber mavposeSub_, gzmavposeSub_, local_sub;
     ros::Subscriber mavtwistSub_;
-    ros::Subscriber rcSub_;  
+    ros::Subscriber rcSub_, source_sub;  
     ros::Publisher rotorVelPub_, angularVelPub_;
     ros::Publisher referencePosePub_, referencePosePubCA_;
     ros::Publisher des_attRefPub_, error_attPub_;
@@ -91,7 +93,8 @@ class geometricCtrl
     int AGENT_NUMBER;
     std::vector<double> desiredRate, desiredAtt, attctrl_tau_p, attctrl_tau_d, attctrl_tau_i;
     std::vector<ros::Time> agentInfo_time;
-    bool tuneRate, tuneAtt, avoiding, timeFlag, obstaclesOn, tunePosVel;
+
+    bool tuneRate, tuneAtt, avoiding, timeFlag, obstaclesOn, tunePosVel, newSourceData, outerBox;
     ros::Time finishedAvoid_time, avoid_time;
     mavros_msgs::RCIn  RCin;
     int num_rotors_;
@@ -104,6 +107,7 @@ class geometricCtrl
     bool use_gzstates_, sim_enable_;
     double kp_rot_, kd_rot_;
     double reference_request_dt_;
+    double xs, ys, zs; // source position for obstacle
     /* double attctrl_tau_; */
     //Eigen::Vector3d attctrl_tau_;
     double norm_thrust_const_;
@@ -143,7 +147,7 @@ class geometricCtrl
     
     Eigen::Vector3d goalPos_, targetPos_, targetVel_, targetAcc_, targetJerk_, targetSnap_, targetPos_prev_, targetVel_prev_, targetCA_vel, targetCA_pos, targetPos_noCA, targetVel_noCA, targetAcc_noCA, targetPos_noCA_prev_, targetVel_noCA_prev_;
     Eigen::Vector3d mavPos_, mavVel_, mavRate_, holdPos_;
-    double mavYaw_;
+    double mavYaw_, xyAccelMax;
     Eigen::Vector3d a_des, a_fb, a_ref, a_rd, g_, a_des_filtered, action_int_;
     std::vector<Eigen::Vector3d> a_des_history;
     int ades_idx;
@@ -162,6 +166,7 @@ class geometricCtrl
     void pubRateCommands();
     void pubReferencePose();
     void localCallback(const geometry_msgs::PoseWithCovarianceStamped &msg);
+    void sourceCallback(const enif_iuc::AgentSource &msg);
     void odomCallback(const nav_msgs::OdometryConstPtr& odomMsg);
     void rc_command_callback(const mavros_msgs::RCIn::ConstPtr &new_message);
     void targetCallback(const geometry_msgs::TwistStamped& msg);

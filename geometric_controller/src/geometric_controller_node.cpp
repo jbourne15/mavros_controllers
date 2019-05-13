@@ -34,6 +34,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   inverse << 1.0, -1.0, -1.0, -1.0;
   std::vector<double> kp, kv, ki;
 
+  newSourceData=false;
   q_des<< -0.7071068,0,0,-0.7071068;
   holdPos_<<0,0,0;
 
@@ -47,6 +48,8 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   Kint_<<ki[0],ki[1],ki[2];
 
   nh_.param<double>("geometric_controller/takeOffThrust", takeOffThrust, .60);
+  nh_.param<bool>("geometric_controller/outerBox", outerBox, false);
+  nh_.param<double>("geometric_controller/xyAccelMax", xyAccelMax, 3.0);
 
   sumAtt <<0,0,0;
   
@@ -111,6 +114,12 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<float>("geometric_controller/radius", radius, 2.5);
   nh_.param<bool>("geometric_controller/obstaclesOn", obstaclesOn, false);
 
+  nh_.param<int>("trajectory_publisher/trajectoryID", target_trajectoryID_, -1);
+  if (target_trajectoryID_==4){
+    obstaclesOn=true;
+    ROS_INFO("[GEO] trajId=4, avoiding static obstacles!!!");
+  }
+
   newRefData=false;
   newDataFlag=false;
   newVelData.resize(numAgents);
@@ -140,10 +149,13 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
    nh_.param<double>("/v_max", v_max, 3);
    nh_.param<bool>("/avoidAgents", avoidAgents, true);
 
-   rcSub_ = nh_.subscribe(agentName+"/mavros/rc/in",1,&geometricCtrl::rc_command_callback,this,ros::TransportHints().tcpNoDelay());
-   referenceSub_=nh_.subscribe(agentName+"/reference/setpoint",1, &geometricCtrl::targetCallback,this,ros::TransportHints().tcpNoDelay());
 
-   accelReferenceSub_=nh_.subscribe(agentName+"/reference/accel",1, &geometricCtrl::targetAccelCallback,this,ros::TransportHints().tcpNoDelay());
+  source_sub = nh_.subscribe("/agent_source_data",1,&geometricCtrl::sourceCallback,this,ros::TransportHints().tcpNoDelay());
+
+  rcSub_ = nh_.subscribe(agentName+"/mavros/rc/in",1,&geometricCtrl::rc_command_callback,this,ros::TransportHints().tcpNoDelay());
+  referenceSub_=nh_.subscribe(agentName+"/reference/setpoint",1, &geometricCtrl::targetCallback,this,ros::TransportHints().tcpNoDelay());
+
+  accelReferenceSub_=nh_.subscribe(agentName+"/reference/accel",1, &geometricCtrl::targetAccelCallback,this,ros::TransportHints().tcpNoDelay());
     
    flatreferenceSub_ = nh_.subscribe(agentName+"/reference/flatsetpoint", 1, &geometricCtrl::flattargetCallback, this, ros::TransportHints().tcpNoDelay());
    mavstateSub_ = nh_.subscribe(agentName+"/mavros/state", 1, &geometricCtrl::mavstateCallback, this,ros::TransportHints().tcpNoDelay());
@@ -221,8 +233,6 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
      setupScenario();
    }
    targetPos_ << xt(AGENT_NUMBER-1,0), xt(AGENT_NUMBER-1,1), 1;
-  
-   // ros::Duration(15.0).sleep(); // sleep for half a second
  }
 geometricCtrl::~geometricCtrl() {
    delete sim;
@@ -647,9 +657,11 @@ void geometricCtrl::wait4Home(void){
       ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData, (runAlg.compare("info")!=0));
 	
     }
+    // ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d, newSourceData=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData, (runAlg.compare("info")!=0), !newSourceData);
     
-  } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData || (runAlg.compare("info")!=0)) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
-  
+
+  // } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData || (runAlg.compare("info")!=0) || (!newSourceData || !sim_enable_)) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
+    } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData || (runAlg.compare("info")!=0)) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
   //} while ((!g_geodetic_converter.isInitialised() || !newRefData) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
 
   newDataFlag=true;
@@ -679,8 +691,15 @@ void geometricCtrl::setupScenario(void) {
   
   sim->setTimeStep(.01f);
   
-  // neighborDist,maxNeighbors,timeHorizon,timeHorizonObst,radius,maxSpeed,    
-  sim->setAgentDefaults(30.0f, numAgents*2, 5.0f, 2.5f, radius, 1.5*v_max);
+  // neighborDist,maxNeighbors,timeHorizon,timeHorizonObst,radius,maxSpeed,
+  if(target_trajectoryID_==4){  // outdoor test
+    sim->setAgentDefaults(30.0f, numAgents*2, 6.0f, 3.0f, 1, 1.1*v_max);
+  }
+  else{
+    sim->setAgentDefaults(30.0f, numAgents*2, 5.0f, 2.5f, radius, 1.1*v_max);
+  }
+
+  
 
   for (int i=0;i<numAgents; i++){
     sim->addAgent(RVO::Vector2(xt(i,0), xt(i,1)));
@@ -693,101 +712,109 @@ void geometricCtrl::setupScenario(void) {
 
   // // Add (polygonal) obstacle(s), specifying vertices in counterclockwise order.
   std::vector<std::vector<RVO::Vector2>> obstacles;
+  std::vector<RVO::Vector2> obstacle;
   // obstacles.resize(3);
 
-  /*
-    std::vector<RVO::Vector2> obstacle1, obstacle2, obstacle3, obstacle4;
-  // must be counterclockwise or will fail!!!
-  obstacle1.push_back(RVO::Vector2(0.0f, 15.0f));
-  obstacle1.push_back(RVO::Vector2(5.0f, 25.0f));
-  obstacle1.push_back(RVO::Vector2(-5.0f, 25.0f));
+  if (newSourceData){
+    // obstacle.push_back(RVO::Vector2(-20.0f, 2.0f));
+    // obstacle.push_back(RVO::Vector2(-22.0f, -2.0f));
+    // obstacle.push_back(RVO::Vector2(-18.0f, -2.0f));
+    float triSize=5;
 
-  obstacles.push_back(obstacle1);
+    obstacle.push_back(RVO::Vector2(xs,ys+triSize/2.0));
+    obstacle.push_back(RVO::Vector2(xs-triSize/2.0, ys-triSize/2.0));
+    obstacle.push_back(RVO::Vector2(xs+triSize/2.0, ys-triSize/2.0));
 
+    
+    obstacles.push_back(obstacle);
+    // obstacle.clear();    
+  }
+
+  if (target_trajectoryID_==4){
+
+    float triSize=0.25;
+    double xs, ys;
+    xs=1;
+    ys=4;
+
+    obstacle.push_back(RVO::Vector2(xs,ys+triSize/2.0));
+    obstacle.push_back(RVO::Vector2(xs-triSize/2.0, ys-triSize/2.0));
+    obstacle.push_back(RVO::Vector2(xs+triSize/2.0, ys-triSize/2.0));
+    
+    obstacles.push_back(obstacle);
+    obstacle.clear();
+  }
   
-  // obstacle2.push_back(RVO::Vector2(-20.0f, 5.0f));
-  // obstacle2.push_back(RVO::Vector2(-25.0f, -5.0f));
-  // obstacle2.push_back(RVO::Vector2(-15.0f, -5.0f));
 
-  // obstacles.push_back(obstacle2);
-
-  
-  obstacle3.push_back(RVO::Vector2(0.0f, -15.0f));
-  obstacle3.push_back(RVO::Vector2(-5.0f, -25.0f));  
-  obstacle3.push_back(RVO::Vector2(5.0f, -25.0f));
-  
-  obstacles.push_back(obstacle3);
-  */
-
-  std::vector<double> tNoise; // target noise assumption
-  nh_.getParam(agentName+"/pf/t_noise", tNoise);
-  int targetStates = tNoise.size(); // number of states
-
-  SS.set_size(targetStates,2);
-
-  nh_.setParam("/boxXmin", SS(0,0));
-  nh_.setParam("/boxXmax", SS(0,1));    
-  nh_.setParam("/boxYmin", SS(1,0));
-  nh_.setParam("/boxYmax", SS(1,1));
-
-  
-  std::vector<double> minT, maxT;
-  nh_.getParam(agentName+"/pf/minT", minT);
-  nh_.getParam(agentName+"/pf/maxT", maxT);
-                   
-  dlib::matrix<double> tp0, tp1;
-  tp0.set_size(targetStates,1);
-  tp1.set_size(targetStates,1); 
-  // dlib::matrix<double,targetStates,1> tp0, tp1;
-    	
-  // =    x    ,    y   ,      z     ,  Q ,  V ,       A          , Dy,     Dz or tau
-  tp0 = minT[0],minT[1],minT[2],minT[3],minT[4],minT[5]*M_PI/180.0,minT[6],minT[7];    
-  tp1 = maxT[0],maxT[1],maxT[2],maxT[3],maxT[4],maxT[5]*M_PI/180.0,maxT[6],maxT[7];
-
-  dlib::set_colm(SS,0)=tp0;
-  dlib::set_colm(SS,1)=tp1;
-
-  std::vector<RVO::Vector2> obstacle;
-  int buffer=5;
-  int width=1;
-
-  // counterclockwise:
-
-  // bottom
-  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,0)-buffer));
-  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,0)-buffer-width));
-  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,0)-buffer-width));
-  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,0)-buffer));
-
-  obstacles.push_back(obstacle);
-  obstacle.clear();
-
-  // left
-  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,0)-buffer));
-  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,1)+buffer));
-  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer-width, SS(1,1)+buffer));
-  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer-width, SS(1,0)-buffer));
-
-  obstacles.push_back(obstacle);
-  obstacle.clear();
-
-  // right
-  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,0)-buffer));
-  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,1)+buffer));
-  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer+width, SS(1,1)+buffer));
-  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer+width, SS(1,0)-buffer));
-
-  obstacles.push_back(obstacle);
-  obstacle.clear();
-
-  // top
-  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,1)+buffer));
-  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,1)+buffer));
-  obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,1)+buffer+width));
-  obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,1)+buffer+width));
-  
-  obstacles.push_back(obstacle);
-  
+  if (outerBox){
+    std::vector<double> tNoise; // target noise assumption
+    nh_.getParam(agentName+"/pf/t_noise", tNoise);
+    int targetStates = tNoise.size(); // number of states
+    
+    SS.set_size(targetStates,2);
+    
+    nh_.setParam("/boxXmin", SS(0,0));
+    nh_.setParam("/boxXmax", SS(0,1));    
+    nh_.setParam("/boxYmin", SS(1,0));
+    nh_.setParam("/boxYmax", SS(1,1));
+    
+    std::vector<double> minT, maxT;
+    nh_.getParam(agentName+"/pf/minT", minT);
+    nh_.getParam(agentName+"/pf/maxT", maxT);
+    
+    dlib::matrix<double> tp0, tp1;
+    tp0.set_size(targetStates,1);
+    tp1.set_size(targetStates,1); 
+    // dlib::matrix<double,targetStates,1> tp0, tp1;
+    
+    // =    x    ,    y   ,      z     ,  Q ,  V ,       A          , Dy,     Dz or tau
+    tp0 = minT[0],minT[1],minT[2],minT[3],minT[4],minT[5]*M_PI/180.0,minT[6],minT[7];    
+    tp1 = maxT[0],maxT[1],maxT[2],maxT[3],maxT[4],maxT[5]*M_PI/180.0,maxT[6],maxT[7];
+    
+    dlib::set_colm(SS,0)=tp0;
+    dlib::set_colm(SS,1)=tp1;
+    
+    // std::vector<RVO::Vector2> obstacle;
+    int buffer=5;
+    int width=1;
+    
+    // counterclockwise:
+    
+    // bottom
+    obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,0)-buffer));
+    obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,0)-buffer-width));
+    obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,0)-buffer-width));
+    obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,0)-buffer));
+    
+    obstacles.push_back(obstacle);
+    obstacle.clear();
+    
+    // left
+    obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,0)-buffer));
+    obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,1)+buffer));
+    obstacle.push_back(RVO::Vector2(SS(0,0)-buffer-width, SS(1,1)+buffer));
+    obstacle.push_back(RVO::Vector2(SS(0,0)-buffer-width, SS(1,0)-buffer));
+    
+    obstacles.push_back(obstacle);
+    obstacle.clear();
+    
+    // right
+    obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,0)-buffer));
+    obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,1)+buffer));
+    obstacle.push_back(RVO::Vector2(SS(0,1)+buffer+width, SS(1,1)+buffer));
+    obstacle.push_back(RVO::Vector2(SS(0,1)+buffer+width, SS(1,0)-buffer));
+    
+    obstacles.push_back(obstacle);
+    obstacle.clear();
+    
+    // top
+    obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,1)+buffer));
+    obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,1)+buffer));
+    obstacle.push_back(RVO::Vector2(SS(0,1)+buffer, SS(1,1)+buffer+width));
+    obstacle.push_back(RVO::Vector2(SS(0,0)-buffer, SS(1,1)+buffer+width));
+    
+    obstacles.push_back(obstacle);
+  }
   
   visualization_msgs::Marker obstacleMsg;
   obstacleMsg.header.frame_id = "/world";
@@ -801,11 +828,16 @@ void geometricCtrl::setupScenario(void) {
   obstacleMsg.pose.orientation.z = 0.0;
   obstacleMsg.pose.orientation.w = 1.0;
   obstacleMsg.scale.x = 0.25*1;
+  if (target_trajectoryID_==4){
+    obstacleMsg.scale.x = 0.05;
+  }
+  
   std_msgs::ColorRGBA clr;
   clr.r = 1;
   clr.g = 0;
   clr.b = 0;
   clr.a = 1.0;
+  
 
   for (int j=0; j<obstacles.size(); j++){
     for (int i=0; i<obstacles[j].size(); i++){
@@ -900,6 +932,17 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
   //}
 }
 
+void geometricCtrl::sourceCallback(const enif_iuc::AgentSource &msg){
+  // receive source location from enif_iuc_quad
+  if(g_geodetic_converter.isInitialised()){
+    g_geodetic_converter.geodetic2Enu(msg.source.latitude, msg.source.longitude, H_altitude, &xs, &ys, &zs);
+    // if different then setupScenario:
+    ROS_INFO("[geo] got source data: (%f,%f,%f)", xs, ys, zs);    
+    newSourceData = true;
+    setupScenario();
+  }
+}
+
 
 void geometricCtrl::rc_command_callback(const mavros_msgs::RCIn::ConstPtr &new_message)
 {
@@ -916,6 +959,10 @@ void geometricCtrl::targetAccelCallback(const geometry_msgs::AccelStamped& msg) 
   accel_CA.accel.linear.x=targetAcc_(0);
   accel_CA.accel.linear.y=targetAcc_(1);
   accel_CA.accel.linear.z=targetAcc_(2);
+
+  accel_CA.accel.angular.x=a_des(0);
+  accel_CA.accel.angular.y=a_des(1);
+  accel_CA.accel.angular.z=a_des(2);
 
   mavAccelPub_.publish(accel_CA);
 
@@ -1111,7 +1158,7 @@ void geometricCtrl::gzmavposeCallback(const gazebo_msgs::ModelStates& msg){
 void geometricCtrl::armingCallback(const ros::TimerEvent& event){
   nh_.param<std::string>("/runAlg", runAlg, "lawnMower");
     
-  if (runAlg.compare("info")==0 && newDataFlag || tuneAtt || tuneRate){
+  if (newDataFlag && runAlg.compare("info")==0 && g_geodetic_converter.isInitialised() && !std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) && !std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) && newRefData || tuneAtt || tuneRate){
     if(!sim_enable_){
       if(mode<1100 && (tuneAtt || tuneRate)){
 	// Enable OFFBoard mode and arm automatically
@@ -1136,8 +1183,7 @@ void geometricCtrl::armingCallback(const ros::TimerEvent& event){
       //else{
       // if i am not tuning then let client handle arming and offboard mode
       //}
-      
-      
+            
     }
     else{ // i am simulating
       arm_cmd_.request.value = true;      
@@ -1390,13 +1436,17 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     q_ref = acc2quaternion(a_ref - g_, mavYaw_);
     R_ref = quat2RotMatrix(q_ref);
     a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_ + action_int_; //feedforward term for trajectory error
-    // if(a_fb(2) < -max_fb_acc_) a_fb(2) = -max_fb_acc_;
+    
     if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;    
     
     a_rd = R_ref * D_.asDiagonal() * R_ref.transpose() * targetVel_; //Rotor drag
     // a_des = a_fb + a_ref - a_rd - g_;
     a_des = a_fb + a_ref - g_;
-    
+
+    if(a_des(0) > xyAccelMax ) a_des(0) = xyAccelMax;
+    if(a_des(0) < -xyAccelMax) a_des(0) = -xyAccelMax;
+    if(a_des(1) > xyAccelMax ) a_des(1) = xyAccelMax;
+    if(a_des(1) < -xyAccelMax) a_des(1) = -xyAccelMax;
     
     // a_des_history[ades_idx]=a_des;    
 
