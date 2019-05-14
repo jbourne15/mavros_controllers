@@ -691,7 +691,7 @@ void geometricCtrl::setupScenario(void) {
   sim->setTimeStep(.01f);
   
   // neighborDist,maxNeighbors,timeHorizon,timeHorizonObst,radius,maxSpeed,
-  sim->setAgentDefaults(30.0f, numAgents*2, 15.0f, 3.0f, 1.25, 1.1*v_max);
+  sim->setAgentDefaults(30.0f, numAgents*2, 15.0f, 3.0f, 1.25, 1.25*v_max);
   
 
   for (int i=0;i<numAgents; i++){
