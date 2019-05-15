@@ -18,6 +18,10 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<int>("geometric_controller/agent_number", AGENT_NUMBER, 1);
   nh_.param<bool>("geometric_controller/tunePosVel", tunePosVel, false);
   nh_.param<int>("trajectory_publisher/trajectoryID", target_trajectoryID_, -1);
+
+  if (target_trajectoryID_==5){
+    tunePosVel=false;
+  }
   
   /// Target State is the reference state received from the trajectory
   /// goalState is the goal the controller is trying to reach
