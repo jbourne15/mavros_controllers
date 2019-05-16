@@ -18,15 +18,10 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<int>("geometric_controller/agent_number", AGENT_NUMBER, 1);
   nh_.param<bool>("geometric_controller/tunePosVel", tunePosVel, false);
   nh_.param<int>("trajectory_publisher/trajectoryID", target_trajectoryID_, -1);
-
-  if (target_trajectoryID_==5){
-    tunePosVel=false;
-  }
   
   /// Target State is the reference state received from the trajectory
   /// goalState is the goal the controller is trying to reach
   // goalPos_ << 2*(AGENT_NUMBER-1), 0.0, 1.5; //Initial Position // needs check so that my quads don't freak out
-
 
   quadMode.data=1;
   targetVel_ << 0.0, 0.0, 0.0;
@@ -695,7 +690,7 @@ void geometricCtrl::setupScenario(void) {
   sim->setTimeStep(.01f);
   
   // neighborDist,maxNeighbors,timeHorizon,timeHorizonObst,radius,maxSpeed,
-  sim->setAgentDefaults(30.0f, numAgents*2, 15.0f, 3.0f, 1.25, 1.25*v_max);
+  sim->setAgentDefaults(30.0f, numAgents*2, 15.0f, 3.0f, radius, 1.25*v_max);
   
 
   for (int i=0;i<numAgents; i++){
@@ -1250,7 +1245,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
 	cmdBodyRate_(2)=0;
 	
-	if (((targetPos_noCA-mavPos_).norm() < 0.1 && mavVel_.norm()<.35) && mavPos_(2)>0.6 && holdPos_(2)==1.0){	  
+	if (((targetPos_noCA-mavPos_).norm() < 0.1 && mavVel_.norm()<.35) && mavPos_(2)>0.6 && holdPos_(2)==1.0 && std::all_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;}) && std::all_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;})){
 	  if(target_trajectoryID_==0){
 	    quadMode.data=2; //stay in hold mode
 	  }
@@ -1259,7 +1254,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	  }
 	}
 	else{
-	  ROS_INFO_THROTTLE(.5,"quadMode= %d, waiting until quad is still: targetPos_noCA-mavPos_=%f, mavVel=%f, mavPos_(2)=%f,", quadMode.data, (targetPos_noCA-mavPos_).norm(), mavVel_.norm(), mavPos_(2));
+	  ROS_INFO_THROTTLE(.5,"quadMode= %d, waiting until quad is still: targetPos_noCA-mavPos_=%f, mavVel=%f, mavPos_(2)=%f, newPos=%d, newVel=%d", quadMode.data, (targetPos_noCA-mavPos_).norm(), mavVel_.norm(), mavPos_(2), std::all_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;}), std::all_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;}));
 	}
       }
       else if(quadMode.data==3){
