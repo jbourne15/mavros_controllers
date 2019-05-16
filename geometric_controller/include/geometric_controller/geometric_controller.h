@@ -107,7 +107,7 @@ class geometricCtrl
     bool use_gzstates_, sim_enable_;
     double kp_rot_, kd_rot_;
     double reference_request_dt_;
-    double xs, ys, zs; // source position for obstacle
+    double xs, ys, zs, sourceObjSize; // source position for obstacle
     /* double attctrl_tau_; */
     //Eigen::Vector3d attctrl_tau_;
     double norm_thrust_const_;
@@ -115,7 +115,7 @@ class geometricCtrl
     float radius, timeH;
     mavros_msgs::SetMavFrame mav_frame;
     std::vector<bool> newPosData, newVelData;
-    bool newRefData, avoidAgents, newDataFlag;    
+    bool newRefData, avoidAgents, newDataFlag, simSetup;
     int numAgents;
     std_msgs::Int16 quadMode;
     geometry_msgs::TwistStamped b_msg;

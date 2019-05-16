@@ -18,6 +18,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<int>("geometric_controller/agent_number", AGENT_NUMBER, 1);
   nh_.param<bool>("geometric_controller/tunePosVel", tunePosVel, false);
   nh_.param<int>("trajectory_publisher/trajectoryID", target_trajectoryID_, -1);
+  nh_.param<double>("geometric_controller/sourceObjSize", sourceObjSize, 0.5);
   
   /// Target State is the reference state received from the trajectory
   /// goalState is the goal the controller is trying to reach
@@ -122,6 +123,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
   newRefData=false;
   newDataFlag=false;
+  simSetup=false;
   newVelData.resize(numAgents);
   newPosData.resize(numAgents);
   std::fill(newVelData.begin(), newVelData.end(), false);
@@ -222,9 +224,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
    if (tuneRate && tuneAtt){
      ROS_ERROR("tuneRate=true and tuneAtt=true, only tune one");
      while(ros::ok()){ros::Duration(20.0).sleep();}
-   }
-
-   sim = new RVO::RVOSimulator();
+   }   
 
    wait4Home(); // ensures I have gotten positions from other agents at least
 
@@ -694,11 +694,12 @@ void geometricCtrl::updateGoal(void){
 
 void geometricCtrl::setupScenario(void) {
   //wait4Home ensures I have necessary variables set.
+  sim = new RVO::RVOSimulator();
   
   sim->setTimeStep(.01f);
   
   // neighborDist,maxNeighbors,timeHorizon,timeHorizonObst,radius,maxSpeed,
-  sim->setAgentDefaults(30.0f, numAgents*2, timeH, 3.0f, radius, 1.25*v_max);
+  sim->setAgentDefaults(30.0f, numAgents*2, timeH, 1.0f, radius, 1.25*v_max);
   
 
   for (int i=0;i<numAgents; i++){
@@ -716,30 +717,27 @@ void geometricCtrl::setupScenario(void) {
   // obstacles.resize(3);
 
   if (newSourceData){
-    // obstacle.push_back(RVO::Vector2(-20.0f, 2.0f));
-    // obstacle.push_back(RVO::Vector2(-22.0f, -2.0f));
-    // obstacle.push_back(RVO::Vector2(-18.0f, -2.0f));
-    float triSize=5;
+    obstacle.push_back(RVO::Vector2(xs,ys+sourceObjSize/2.0));
+    obstacle.push_back(RVO::Vector2(xs-sourceObjSize/2.0, ys-sourceObjSize/2.0));
+    obstacle.push_back(RVO::Vector2(xs+sourceObjSize/2.0, ys-sourceObjSize/2.0));
 
-    obstacle.push_back(RVO::Vector2(xs,ys+triSize/2.0));
-    obstacle.push_back(RVO::Vector2(xs-triSize/2.0, ys-triSize/2.0));
-    obstacle.push_back(RVO::Vector2(xs+triSize/2.0, ys-triSize/2.0));
-
+    obstaclesOn=true;
     
     obstacles.push_back(obstacle);
-    // obstacle.clear();    
+    // obstacle.clear();
+    ROS_INFO("[geo] placing obstacle over x=%f, y=%f", xs, ys);
   }
 
   if (target_trajectoryID_==4){
 
     float triSize=0.25;
-    double xs, ys;
-    xs=1;
-    ys=4;
+    double x, y;
+    x=1;
+    y=4;
 
-    obstacle.push_back(RVO::Vector2(xs,ys+triSize/2.0));
-    obstacle.push_back(RVO::Vector2(xs-triSize/2.0, ys-triSize/2.0));
-    obstacle.push_back(RVO::Vector2(xs+triSize/2.0, ys-triSize/2.0));
+    obstacle.push_back(RVO::Vector2(x,y+triSize/2.0));
+    obstacle.push_back(RVO::Vector2(x-triSize/2.0, y-triSize/2.0));
+    obstacle.push_back(RVO::Vector2(x+triSize/2.0, y-triSize/2.0));
     
     obstacles.push_back(obstacle);
     obstacle.clear();
@@ -828,7 +826,7 @@ void geometricCtrl::setupScenario(void) {
   obstacleMsg.pose.orientation.z = 0.0;
   obstacleMsg.pose.orientation.w = 1.0;
   obstacleMsg.scale.x = 0.25*1;
-  if (target_trajectoryID_==4){
+  if (target_trajectoryID_==4 || newSourceData){
     obstacleMsg.scale.x = 0.05;
   }
   
@@ -874,9 +872,12 @@ void geometricCtrl::setupScenario(void) {
     for (int i=0; i<obstacles.size(); i++){
       sim->addObstacle(obstacles[i]);
     }
-    
+
+    ROS_INFO("[geo] processing %f obstacles", obstacles.size());
     sim->processObstacles();
   }
+
+  simSetup=true;
 }
 
 void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
@@ -888,7 +889,6 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
     //std::cout<<agentName<<" got other agent data"<<std::endl;
     //ROS_INFO("got agent %d 's data: ", msg.agent_number, msg.mps.percentLEL);
     
-
     double x,y,z;
 
     // convert to local ENU frame
@@ -916,6 +916,11 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
     xt(msg.agent_number-1,1) = xt(msg.agent_number-1,1)+vt(msg.agent_number-1,1)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();
     xt(msg.agent_number-1,2) = xt(msg.agent_number-1,2)+vt(msg.agent_number-1,2)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();
 
+    // //move ball closer to me.
+    // xt(msg.agent_number-1,0) = xt(msg.agent_number-1,0) + (-xt(msg.agent_number-1,0)+xt(AGENT_NUMBER-1,0))*.05;
+    // xt(msg.agent_number-1,1) = xt(msg.agent_number-1,1) + (-xt(msg.agent_number-1,1)+xt(AGENT_NUMBER-1,1))*.05;
+    // xt(msg.agent_number-1,2) = xt(msg.agent_number-1,2) + (-xt(msg.agent_number-1,2)+xt(AGENT_NUMBER-1,2))*.05;
+    
     // std::cout<<"AGENT_NUMBER: "<<AGENT_NUMBER<<std::endl;
     // std::cout<<"msg.agent_number: "<<msg.agent_number<<std::endl;
     // std::cout<<"xt: "<<xt<<std::endl;
@@ -939,6 +944,7 @@ void geometricCtrl::sourceCallback(const enif_iuc::AgentSource &msg){
     // if different then setupScenario:
     ROS_INFO("[geo] got source data: (%f,%f,%f)", xs, ys, zs);    
     newSourceData = true;
+    simSetup=false;
     setupScenario();
   }
 }
@@ -986,7 +992,7 @@ void geometricCtrl::targetCallback(const geometry_msgs::TwistStamped& msg) {
   targetPos_ << msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z;
   targetVel_ << msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z;
 
-  if (avoidAgents && newDataFlag && !tuneAtt && !tuneRate){
+  if (avoidAgents && newDataFlag && !tuneAtt && !tuneRate && simSetup){
     updateCA_velpos();
   }  
   
