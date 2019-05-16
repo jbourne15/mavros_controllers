@@ -111,6 +111,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
   nh_.param<int>(agentName+"/pf/agents", numAgents, 4);  
   nh_.param<float>("geometric_controller/radius", radius, 2.5);
+  nh_.param<float>("geometric_controller/timeH", timeH, 15);
   nh_.param<bool>("geometric_controller/obstaclesOn", obstaclesOn, false);
 
   nh_.param<int>("trajectory_publisher/trajectoryID", target_trajectoryID_, -1);
@@ -269,6 +270,13 @@ void geometricCtrl::updateAgents(void) {
 }
 
 void geometricCtrl::updateCA_velpos(void){
+
+  // for (int i=0; i<numAgents; i++){
+  //   xt(i,0) = xt(i,0)+vt(i,0)*0.01;
+  //   xt(i,1) = xt(i,1)+vt(i,1)*0.01;
+  //   xt(i,2) = xt(i,2)+vt(i,2)*0.01;
+  // }
+  
   updateAgents();
   sim->doStep();
   // sim->doStep();  // predict farther forward?
@@ -445,9 +453,9 @@ void geometricCtrl::updateCA_velpos(void){
     otherAgentMarker.pose.orientation.y = 0.0;
     otherAgentMarker.pose.orientation.z = 0.0;
     otherAgentMarker.pose.orientation.w = 1.0;
-    otherAgentMarker.scale.x = 2*2;// 0.25*5;
-    otherAgentMarker.scale.y = 2*2; //0.25*5;
-    otherAgentMarker.scale.z = 2*2; //0.25*5;
+    otherAgentMarker.scale.x = radius*2;//2*2;// 0.25*5;
+    otherAgentMarker.scale.y = radius*2;//2*2; //0.25*5;
+    otherAgentMarker.scale.z = radius*2;//2*2; //0.25*5;
     otherAgentMarker.pose.position.x = xt(i,0);
     otherAgentMarker.pose.position.y = xt(i,1);
     otherAgentMarker.pose.position.z = xt(i,2);
@@ -690,7 +698,7 @@ void geometricCtrl::setupScenario(void) {
   sim->setTimeStep(.01f);
   
   // neighborDist,maxNeighbors,timeHorizon,timeHorizonObst,radius,maxSpeed,
-  sim->setAgentDefaults(30.0f, numAgents*2, 15.0f, 3.0f, radius, 1.25*v_max);
+  sim->setAgentDefaults(30.0f, numAgents*2, timeH, 3.0f, radius, 1.25*v_max);
   
 
   for (int i=0;i<numAgents; i++){
@@ -877,8 +885,8 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
     
   if (validGPS && msg.agent_number!=AGENT_NUMBER && g_geodetic_converter.isInitialised())
   {
-    // std::cout<<agentName<<" got other agent data"<<std::endl;
-    // ROS_INFO("got agent %d 's data: ", msg.agent_number, msg.mps.percentLEL);
+    //std::cout<<agentName<<" got other agent data"<<std::endl;
+    //ROS_INFO("got agent %d 's data: ", msg.agent_number, msg.mps.percentLEL);
     
 
     double x,y,z;
@@ -903,7 +911,7 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
     // vt(msg.agent_number-1,0) = .75*vt(msg.agent_number-1,0) + .25*msg.mps.vel_x;
     // vt(msg.agent_number-1,1) = .75*vt(msg.agent_number-1,1) + .25*msg.mps.vel_y;
     // vt(msg.agent_number-1,2) = .75*vt(msg.agent_number-1,2) + .25*msg.mps.vel_z;
-    
+
     xt(msg.agent_number-1,0) = xt(msg.agent_number-1,0)+vt(msg.agent_number-1,0)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();
     xt(msg.agent_number-1,1) = xt(msg.agent_number-1,1)+vt(msg.agent_number-1,1)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();
     xt(msg.agent_number-1,2) = xt(msg.agent_number-1,2)+vt(msg.agent_number-1,2)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();

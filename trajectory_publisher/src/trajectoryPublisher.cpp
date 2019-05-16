@@ -430,7 +430,7 @@ void trajectoryPublisher::moveReference() {
 	  getPolyTrajectory();
 	  //ros::Duration(2).sleep();	  
 	}
-	else if (p_targ.isApprox(v_targ) && v_targ.isApprox(p_targ) && newTraj)
+	else if (p_targ.isApprox(v_targ) && v_targ.isApprox(p_targ) && newTraj && quadMode!=1)
 	  {
 	    p_targ = target_initpos;
 	    v_targ.setZero();
