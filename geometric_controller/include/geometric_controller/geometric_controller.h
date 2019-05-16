@@ -112,7 +112,7 @@ class geometricCtrl
     //Eigen::Vector3d attctrl_tau_;
     double norm_thrust_const_;
     double max_fb_acc_, max_rollRate, max_pitchRate, max_yawRate, max_rollPitch, takeOffThrust, max_tau_i;
-    float radius;
+    float radius, timeH;
     mavros_msgs::SetMavFrame mav_frame;
     std::vector<bool> newPosData, newVelData;
     bool newRefData, avoidAgents, newDataFlag;    
