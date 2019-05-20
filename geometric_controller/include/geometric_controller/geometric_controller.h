@@ -51,6 +51,8 @@
 #include "enif_iuc/AgentWaypointTask.h"
 #include "geodetic_utils/geodetic_conv.hpp"
 
+#include "kalman.hpp"
+
 #define MODE_ROTORTHRUST  1
 #define MODE_BODYRATE     2
 #define MODE_BODYTORQUE   3
@@ -92,7 +94,7 @@ class geometricCtrl
     int mode, tpvh, target_trajectoryID_;
     int AGENT_NUMBER;
     std::vector<double> desiredRate, desiredAtt, attctrl_tau_p, attctrl_tau_d, attctrl_tau_i;
-    std::vector<ros::Time> agentInfo_time;
+    std::vector<ros::Time> agentInfo_time;    
 
     bool tuneRate, tuneAtt, avoiding, timeFlag, obstaclesOn, tunePosVel, newSourceData, outerBox;
     ros::Time finishedAvoid_time, avoid_time;
@@ -127,6 +129,20 @@ class geometricCtrl
     Eigen::Vector3d sumAtt, actionAtt, cmdRate, actionDotAtt;
     double rollRate, pitchRate, yawRate;
     int signQe, signQe_dot;
+
+    std::vector<KalmanFilter> kfs;
+    Eigen::MatrixXd A; // System dynamics matrix
+    Eigen::MatrixXd C; // Output matrix
+    Eigen::MatrixXd Q; // Process noise covariance
+    Eigen::MatrixXd R; // Measurement noise covariance
+    Eigen::MatrixXd P; // Measurement noise covariance
+    int n, m; // number of states, number of measurmentes
+    double kl_dt_x;
+    bool useKalman;
+    std::vector<bool> kfInit;
+
+    int transCtr;
+    std::chrono::time_point<std::chrono::system_clock> start;
 
 
     std::vector<Eigen::Vector3d> errorVel_history;

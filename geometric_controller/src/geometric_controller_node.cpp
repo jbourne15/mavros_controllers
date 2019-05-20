@@ -2,6 +2,8 @@
 
 #include "geometric_controller/geometric_controller.h"
 
+#include <chrono>
+
 using namespace Eigen;
 using namespace std;
 //Constructor
@@ -33,6 +35,9 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   Kint_ << -3.0, -3.0, -60.0;
   inverse << 1.0, -1.0, -1.0, -1.0;
   std::vector<double> kp, kv, ki;
+
+  transCtr=0;
+  start=std::chrono::system_clock::now();
 
   newSourceData=false;
   q_des<< -0.7071068,0,0,-0.7071068;
@@ -120,6 +125,57 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
     obstaclesOn=true;
     ROS_INFO("[GEO] trajId=4, avoiding static obstacles!!!");
   }
+
+  nh_.param<bool>("/useKalman", useKalman, true);
+  
+  if (useKalman){
+
+    // Discrete 2D integrator dynamics, measuring position and velocity 
+    n=4;
+    m=4;
+    kl_dt_x=0.01;
+  
+    A.resize(n,n); // System dynamics matrix
+    C.resize(m,n); // Output matrix
+    Q.resize(n,n); // Process noise covariance
+    R.resize(m,m); // Measurement noise covariance  
+    P.resize(n,n); // Estimate error covariance
+    
+    A << 1, kl_dt_x ,0,       0,
+         0,       1 ,0,       0,
+         0,       0, 1, kl_dt_x,
+         0,       0, 0,       1;
+  
+    C = MatrixXd::Identity(m, n);  // all states
+
+      // Reasonable covariance matrices  
+    Q << 0.1, 0.0,   0,   0,
+         0.0, 0.01,   0,   0,
+           0,   0, 0.1, 0.0,
+           0,   0, 0.0, 0.01;
+    Q=kl_dt_x*Q;      
+    
+    R <<   0.05, 0.0,   0,   0,
+           0.0, 0.05,   0,   0,
+             0,   0, 0.05, 0.0,
+             0,   0, 0.0, 0.05;
+    
+    P << 5, 0,  0, 0,
+         0,  1,  0, 0,
+         0,  0, 5, 0,
+         0,  0,  0, 1;
+
+    std::cout << "A: \n" << A << std::endl;
+    std::cout << "C: \n" << C << std::endl;
+    std::cout << "Q: \n" << Q << std::endl;
+    std::cout << "R: \n" << R << std::endl;
+    std::cout << "P: \n" << P << std::endl;
+
+  }
+
+  kfInit.resize(numAgents);
+  std::fill(kfInit.begin(), kfInit.end(), false);
+  kfs.resize(numAgents);
 
   newRefData=false;
   newDataFlag=false;
@@ -242,6 +298,9 @@ geometricCtrl::~geometricCtrl() {
 void geometricCtrl::updateAgents(void) {
 
   updateGoal();
+  dlib::matrix<double> disp;
+  double k=1.25;
+  
   for(int i=0; i<numAgents; i++){
     if (i==(AGENT_NUMBER-1)){
 
@@ -260,22 +319,63 @@ void geometricCtrl::updateAgents(void) {
       sim->setAgentPosition    (i, RVO::Vector2(mavPos_(0), mavPos_(1)));
       sim->setAgentVelocity    (i, RVO::Vector2(mavVel_(0), mavVel_(1)));
     }
-    else{      
-      sim->setAgentPrefVelocity(i, RVO::Vector2(vt(i,0), vt(i,1)));
+    else{
+      disp = -rowm(xt,i)+rowm(xt,AGENT_NUMBER-1);      
+      disp = k*disp/dlib::length(disp);
+                        
+      //sim->setAgentPrefVelocity(i, RVO::Vector2(vt(i,0), vt(i,1)));
+      // sim->setAgentVelocity    (i, RVO::Vector2(vt(i,0), vt(i,1)));
+      
+      sim->setAgentPrefVelocity(i, RVO::Vector2(vt(i,0)+disp(0), vt(i,1)+disp(1)));
       sim->setAgentPosition    (i, RVO::Vector2(xt(i,0), xt(i,1)));
-      sim->setAgentVelocity    (i, RVO::Vector2(vt(i,0), vt(i,1)));
+      sim->setAgentVelocity    (i, RVO::Vector2(vt(i,0)+disp(0), vt(i,1)+disp(1)));
       
     }
   }
 }
 
 void geometricCtrl::updateCA_velpos(void){
+  
+  if (transCtr==0){ // start timer
+    start = std::chrono::system_clock::now();
+  }
+  auto end = std::chrono::system_clock::now();
+  std::chrono::duration<double> elapsed_seconds=end-start;
+    
+  //std::cout<<"transmit time="<<t1<<std::endl;
+  transCtr++;
+  //std::cout<<"transmit per sec "<<transCtr<<", "<<elapsed_seconds.count()<<", "<<transCtr/(elapsed_seconds.count())<<std::endl;
 
-  // for (int i=0; i<numAgents; i++){
-  //   xt(i,0) = xt(i,0)+vt(i,0)*0.01;
-  //   xt(i,1) = xt(i,1)+vt(i,1)*0.01;
-  //   xt(i,2) = xt(i,2)+vt(i,2)*0.01;
-  // }
+  kl_dt_x = elapsed_seconds.count()/transCtr;
+
+  sim->setTimeStep(kl_dt_x); 
+
+  //std::cout<<"kl_dt_x="<<kl_dt_x<<std::endl;
+
+
+  
+  if (useKalman){
+    
+    A << 1, kl_dt_x ,0,       0,
+      0,       1 ,0,       0,
+      0,       0, 1, kl_dt_x,
+      0,       0, 0,       1;
+    
+    Eigen::VectorXd state(m);
+    for (int i=0; i<numAgents; i++){      
+      if (i!=(AGENT_NUMBER-1) && kfInit[i]){
+	kfs[i].set_dt(kl_dt_x, A);
+	kfs[i].predict();
+	state<<kfs[i].state();
+	
+	xt(i,0)=state[0];
+	vt(i,0)=state[1];
+	xt(i,1)=state[2];
+	vt(i,1)=state[3];
+
+      }
+    }
+  }  
   
   updateAgents();
   sim->doStep();
@@ -287,33 +387,10 @@ void geometricCtrl::updateCA_velpos(void){
   
   pos = sim->getAgentPosition(AGENT_NUMBER-1);
   vel = sim->getAgentVelocity(AGENT_NUMBER-1);
-
-  // check for runaway agents
-  // double dir = std::atan2(vel.y(), vel.x());
-  // double othDir;
-
-  // int runAway=0;  
-  // std::vector<int> runAwayAgent;
-
-  // for(int i=0; i<numAgents; i++){
-  //   if (i!=(AGENT_NUMBER-1)){
-  //     othDir = std::atan2(vt(i,1), vt(i,0));
-
-  //     // std::cout<<"angle diff: "<<fabs(othDir - dir)*180/M_PI<<std::endl;
-  //     // std::cout<<"pos diff: "<<dlib::length(rowm(xt, AGENT_NUMBER) - rowm(xt, i))<<std::endl;
-  //     // std::cout<<"xt: "<<xt<<std::endl;
-  //     // std::cout<<"sub: "<<(rowm(xt, AGENT_NUMBER) - rowm(xt, i))<<std::endl;
-
-  //     if ((fabs(othDir - dir)-M_PI)<0.5 && (mavPos_-targetPos_noCA).norm()>3){	//dlib::length(rowm(xt, AGENT_NUMBER) - rowm(xt, i))<(2.0*radius)
-  // 	runAwayAgent.push_back(i+1);
-  // 	runAway+=1;
-  //     }
-  //   }    
-  // }
   
   Eigen::Vector3d targetPos_CA, targetVel_CA;
 
-  targetVel_CA << vel.x(), vel.y(), targetVel_noCA(2);
+  targetVel_CA << vel.x(), vel.y(), targetVel_noCA(2);  
   if (targetVel_CA.norm()>0.05){
     targetPos_CA << pos.x(), pos.y(), targetPos_noCA(2);
   }
@@ -323,102 +400,8 @@ void geometricCtrl::updateCA_velpos(void){
     targetVel_CA=targetVel_CA*0;
   }
   
-  
-  // double b;// = (targetVel_CA-targetVel_noCA).norm();
-  // double bx = fabs(targetVel_CA(0)-targetVel_noCA(0));
-  // double by = fabs(targetVel_CA(1)-targetVel_noCA(1));
-
-  // double comp = 0.01*AGENT_NUMBER;
-  
-  // // if (b>.005){ // avoid
-  // if (bx>comp || by>comp){ // avoid if any difference in traj
-  //   b=1;
-  //   targetPos_ = targetPos_CA;
-  //   targetVel_ = targetVel_CA;    
-  //   avoiding=true;
-  //   timeFlag=false;
-
-  //   // if (!runAwayAgent.empty()){
-  //   //   for (int i=0; i<runAwayAgent.size(); i++){	
-  //   // 	if (runAwayAgent[i]>AGENT_NUMBER){
-  //   // 	  targetVel_ = targetVel_*(AGENT_NUMBER*0.1f);
-  //   // 	}
-  //   //   }
-  //   // }
-    
-  //   // avoid_time=ros::Time::now();
-    
-  // }
-  // // else if(b<.005 && avoiding){
-  // else if((bx<comp && by<comp) && avoiding){ // consider stop avoiding when both xy traj are similar to original
-  //   //if i was avoiding and about to stop avoiding
-    
-  //   if(!timeFlag){//if i havent' started timing
-  //     finishedAvoid_time=ros::Time::now(); // start timeing
-  //     timeFlag=true;
-  //   }
-    
-  //   if((ros::Time::now()-finishedAvoid_time).toSec()>2 && mavVel_.norm()>0.25){
-  //     // make sure to wait for three seconds until i follow original pos traj
-  //     avoiding=false;
-  //     targetPos_ = targetPos_noCA;
-  //     targetVel_ = targetVel_noCA;
-  //     b=0;
-  //     timeFlag=false;
-  //   }
-  //   else{ // continue to avoid 
-  //     targetPos_ = targetPos_CA;
-  //     targetVel_ = targetVel_CA;
-  //     b=0.5;
-  //   }
-  // }
-  // else{ // no need to avoid
-  //   b=0;
-  //   targetPos_ = targetPos_noCA;
-  //   targetVel_ = targetVel_noCA;
-  //   avoiding=false;
-  //   timeFlag=false;
-  // }
-
   targetPos_ = targetPos_CA;
   targetVel_ = targetVel_CA;
-
-  /*
-
-  targetPos_history[tpvh] = targetPos_;
-  targetVel_history[tpvh] = targetVel_;
-
-  // double b = b_sigMoid((targetVel_CA-targetVel_noCA).norm(), 100, .01);
-
-  // targetPos_ = std::accumulate(targetPos_history.begin(), targetPos_history.end(), Eigen::Vector3d(0,0,0)) / targetPos_history.size();
-  // targetVel_ = std::accumulate(targetVel_history.begin(), targetVel_history.end(), Eigen::Vector3d(0,0,0)) / targetVel_history.size();
-
-  targetPos_ << 0,0,0;
-  targetVel_ << 0,0,0;
-  for(int i=0;i<targetPos_history.size();i++){
-    targetPos_ = targetPos_ + targetPos_history[i];
-    targetVel_ = targetVel_ + targetVel_history[i];
-
-    // std::cout<<"i: "<<i<<std::endl;
-    // std::cout<<"targetPosHistory[i]: "<<targetPos_history[i]<<std::endl;
-    // std::cout<<"targetVelHistory[i]: "<<targetVel_history[i]<<std::endl;
-    // std::cout<<"targetPos: "<<targetPos_<<std::endl;    
-    // std::cout<<"targetVel: "<<targetVel_<<std::endl;
-  }
-  targetPos_ = targetPos_/targetPos_history.size();
-  targetVel_ = targetVel_/targetVel_history.size();
-
-
-  // std::cout<<"AVE targetPos: "<<targetPos_<<std::endl;    
-  // std::cout<<"AVE targetVel: "<<targetVel_<<std::endl;
-
-
-  tpvh=tpvh+1;
-
-  if(tpvh>targetPos_history.size()){
-    tpvh=0;
-  }
-  */
 
 
   visualization_msgs::Marker otherAgentMarker, otherVelMarker;  
@@ -696,7 +679,7 @@ void geometricCtrl::setupScenario(void) {
   //wait4Home ensures I have necessary variables set.
   sim = new RVO::RVOSimulator();
   
-  sim->setTimeStep(.01f);
+  sim->setTimeStep(.01f); 
   
   // neighborDist,maxNeighbors,timeHorizon,timeHorizonObst,radius,maxSpeed,
   sim->setAgentDefaults(30.0f, numAgents*2, timeH, 1.0f, radius, 1.25*v_max);
@@ -915,16 +898,26 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
     xt(msg.agent_number-1,0) = xt(msg.agent_number-1,0)+vt(msg.agent_number-1,0)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();
     xt(msg.agent_number-1,1) = xt(msg.agent_number-1,1)+vt(msg.agent_number-1,1)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();
     xt(msg.agent_number-1,2) = xt(msg.agent_number-1,2)+vt(msg.agent_number-1,2)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();
-
-    // //move ball closer to me.
-    // xt(msg.agent_number-1,0) = xt(msg.agent_number-1,0) + (-xt(msg.agent_number-1,0)+xt(AGENT_NUMBER-1,0))*.05;
-    // xt(msg.agent_number-1,1) = xt(msg.agent_number-1,1) + (-xt(msg.agent_number-1,1)+xt(AGENT_NUMBER-1,1))*.05;
-    // xt(msg.agent_number-1,2) = xt(msg.agent_number-1,2) + (-xt(msg.agent_number-1,2)+xt(AGENT_NUMBER-1,2))*.05;
+        
+    if (useKalman && kfInit[msg.agent_number-1]){
     
-    // std::cout<<"AGENT_NUMBER: "<<AGENT_NUMBER<<std::endl;
-    // std::cout<<"msg.agent_number: "<<msg.agent_number<<std::endl;
-    // std::cout<<"xt: "<<xt<<std::endl;
-    // std::cout<<"vt: "<<vt<<std::endl;
+      Eigen::Vector4d Z;
+      Z<<xt(msg.agent_number-1,0), vt(msg.agent_number-1,0), xt(msg.agent_number-1,1), vt(msg.agent_number-1,1);
+      
+      kfs[msg.agent_number-1].update(Z);
+            
+    }
+
+    if(kfInit[msg.agent_number-1]==false && useKalman){
+      Eigen::VectorXd x0(n);
+    
+      x0 << xt(msg.agent_number-1,0), vt(msg.agent_number-1,0), xt(msg.agent_number-1,1), vt(msg.agent_number-1,1);
+      KalmanFilter kf(kl_dt_x, A, C, Q, R, P);
+      kf.init(0,x0);
+      kfs[msg.agent_number-1]=kf;
+      
+      kfInit[msg.agent_number-1]=true;
+    }
 
     newPosData[msg.agent_number-1]=true;
     newVelData[msg.agent_number-1]=true;
