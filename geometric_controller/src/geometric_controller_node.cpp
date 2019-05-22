@@ -89,7 +89,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   errorVel_history.resize(50);
   ev_idx=0;
 
-  a_des_history.resize(10);
+  a_des_history.resize(30);
   ades_idx=0;
 
   std::fill(a_des_history.begin(), a_des_history.end(), Eigen::Vector3d(0,0,0));
@@ -117,7 +117,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
   nh_.param<int>(agentName+"/pf/agents", numAgents, 4);  
   nh_.param<float>("geometric_controller/radius", radius, 2.5);
-  nh_.param<float>("geometric_controller/timeH", timeH, 15);
+  nh_.param<float>("geometric_controller/timeH", timeH, 5);
   nh_.param<bool>("geometric_controller/obstaclesOn", obstaclesOn, false);
 
   nh_.param<int>("trajectory_publisher/trajectoryID", target_trajectoryID_, -1);
@@ -299,7 +299,7 @@ void geometricCtrl::updateAgents(void) {
 
   updateGoal();
   dlib::matrix<double> disp;
-  double k=1.25;
+  double k=2*radius*2;
   
   for(int i=0; i<numAgents; i++){
     if (i==(AGENT_NUMBER-1)){
@@ -320,8 +320,14 @@ void geometricCtrl::updateAgents(void) {
       sim->setAgentVelocity    (i, RVO::Vector2(mavVel_(0), mavVel_(1)));
     }
     else{
-      disp = -rowm(xt,i)+rowm(xt,AGENT_NUMBER-1);      
-      disp = k*disp/dlib::length(disp);
+      disp = -rowm(xt,i)+rowm(xt,AGENT_NUMBER-1);
+
+      if (mavVel_.norm()>1){      
+	disp = k/dlib::length(disp)*disp/dlib::length(disp)*mavVel_.norm();
+      }
+      else{
+	disp = k/dlib::length(disp)*disp/dlib::length(disp);
+      }
                         
       //sim->setAgentPrefVelocity(i, RVO::Vector2(vt(i,0), vt(i,1)));
       // sim->setAgentVelocity    (i, RVO::Vector2(vt(i,0), vt(i,1)));
@@ -362,7 +368,7 @@ void geometricCtrl::updateCA_velpos(void){
       0,       0, 0,       1;
     
     Eigen::VectorXd state(m);
-    for (int i=0; i<numAgents; i++){      
+    for (int i=0; i<numAgents; i++){   
       if (i!=(AGENT_NUMBER-1) && kfInit[i]){
 	kfs[i].set_dt(kl_dt_x, A);
 	kfs[i].predict();
@@ -959,9 +965,9 @@ void geometricCtrl::targetAccelCallback(const geometry_msgs::AccelStamped& msg) 
   accel_CA.accel.linear.y=targetAcc_(1);
   accel_CA.accel.linear.z=targetAcc_(2);
 
-  accel_CA.accel.angular.x=a_des(0);
-  accel_CA.accel.angular.y=a_des(1);
-  accel_CA.accel.angular.z=a_des(2);
+  accel_CA.accel.angular.x=a_des_filtered(0);
+  accel_CA.accel.angular.y=a_des_filtered(1);
+  accel_CA.accel.angular.z=a_des_filtered(2);
 
   mavAccelPub_.publish(accel_CA);
 
@@ -1446,17 +1452,19 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     if(a_des(0) < -xyAccelMax) a_des(0) = -xyAccelMax;
     if(a_des(1) > xyAccelMax ) a_des(1) = xyAccelMax;
     if(a_des(1) < -xyAccelMax) a_des(1) = -xyAccelMax;
+        
+    a_des_history[ades_idx]=a_des;    
+
+    a_des_filtered = std::accumulate(a_des_history.begin(), a_des_history.end(), Eigen::Vector3d(0,0,0)) / a_des_history.size();
+
+    ades_idx++;
+
+    if(ades_idx>a_des_history.size()) ades_idx=0;
+
     
-    // a_des_history[ades_idx]=a_des;    
-
-    // a_des_filtered = std::accumulate(a_des_history.begin(), a_des_history.end(), Eigen::Vector3d(0,0,0)) / a_des_history.size();
-
-    // ades_idx++;
-
-    // if(ades_idx>a_des_history.size()) ades_idx=0;
     
-    q_des = acc2quaternion(a_des, mavYaw_);
-    cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
+    q_des = acc2quaternion(a_des_filtered, mavYaw_);
+    cmdBodyRate_ = attcontroller(q_des, a_des_filtered, mavAtt_); //Calculate BodyRate
 
     // ev_idx++;    
     // if (ev_idx>errorVel_history.size()) ev_idx=0;    
