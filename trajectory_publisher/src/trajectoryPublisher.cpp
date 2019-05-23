@@ -393,6 +393,7 @@ void trajectoryPublisher::moveReference() {
   }
   
   trigger_time_ = (curr_time_ - start_time_).toSec();
+  bool replan=false;
 
   // std::cout<<"mode: "<<mode_<<std::endl;
 
@@ -424,8 +425,15 @@ void trajectoryPublisher::moveReference() {
                + (1 - std::cos(theta_)) * traj_axis_.dot(target_initpos) * traj_axis_;
       v_targ = traj_omega_ * traj_axis_.cross(p_targ); //TODO: This is wrong      
     } else if ((target_trajectoryID_ == 3 || target_trajectoryID_ == 4 || target_trajectoryID_ == 5)) {// polynomial
+            
       if (newTraj){
-        int derivativeP = mav_trajectory_generation::derivative_order::POSITION;
+
+	if (trajectory_poly.getMaxTime()<trigger_time_){
+	  trigger_time_ = trajectory_poly.getMaxTime()-.001;
+	  replan=true;
+	}
+	
+	int derivativeP = mav_trajectory_generation::derivative_order::POSITION;
 	int derivativeV = mav_trajectory_generation::derivative_order::VELOCITY;
 	int derivativeA = mav_trajectory_generation::derivative_order::ACCELERATION;
 
@@ -433,16 +441,17 @@ void trajectoryPublisher::moveReference() {
 	v_targ   = trajectory_poly.evaluate(trigger_time_,derivativeV);
 	acc_targ = trajectory_poly.evaluate(trigger_time_,derivativeA);
       }
-
+      
 	if (quadMode==2){
 	  getPolyTrajectory();
 	  //ros::Duration(2).sleep();	  
 	}
-	else if (p_targ.isApprox(v_targ) && v_targ.isApprox(p_targ) && newTraj && quadMode!=1)
+	else if (replan && newTraj && quadMode!=1)
 	  {
-	    p_targ = target_initpos;
-	    v_targ.setZero();
-	    acc_targ.setZero();
+	    // p_targ = target_initpos;
+	    // v_targ.setZero();
+	    // acc_targ.setZero();
+	    
 	    // target_trajectoryID_=0;	    
 	    getPolyTrajectory();	    
 	  }
