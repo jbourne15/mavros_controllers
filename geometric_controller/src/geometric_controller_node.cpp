@@ -21,7 +21,9 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<bool>("geometric_controller/tunePosVel", tunePosVel, false);
   nh_.param<int>("trajectory_publisher/trajectoryID", target_trajectoryID_, -1);
   nh_.param<double>("geometric_controller/sourceObjSize", sourceObjSize, 0.5);
-  
+  nh_.param<double>("geometric_controller/gainCA", gainCA, 2.25);
+
+  std::cout<<"gainCA "<<gainCA<<std::endl;
   /// Target State is the reference state received from the trajectory
   /// goalState is the goal the controller is trying to reach
   // goalPos_ << 2*(AGENT_NUMBER-1), 0.0, 1.5; //Initial Position // needs check so that my quads don't freak out
@@ -299,7 +301,7 @@ void geometricCtrl::updateAgents(void) {
 
   updateGoal();
   dlib::matrix<double> disp;
-  double k=2*radius*2;
+  double k=2*radius*gainCA;
   
   for(int i=0; i<numAgents; i++){
     if (i==(AGENT_NUMBER-1)){

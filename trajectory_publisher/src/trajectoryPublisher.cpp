@@ -17,6 +17,11 @@ trajectoryPublisher::trajectoryPublisher(const ros::NodeHandle& nh, const ros::N
   nh_.setParam("/uav3/quad_vis/marker_scale", 1.5);
   nh_.setParam("/uav4/quad_vis/marker_scale", 1.5);
   nh_.setParam("/uav5/quad_vis/marker_scale", 1.5);
+  nh_.setParam("/uav6/quad_vis/marker_scale", 1.5);
+  nh_.setParam("/uav7/quad_vis/marker_scale", 1.5);
+  nh_.setParam("/uav8/quad_vis/marker_scale", 1.5);
+  nh_.setParam("/uav9/quad_vis/marker_scale", 1.5);
+  nh_.setParam("/uav10/quad_vis/marker_scale", 1.5);
   
   trajectoryPub_ = nh_.advertise<nav_msgs::Path>("reference/trajectory", 1);
   referencePub_ = nh_.advertise<geometry_msgs::TwistStamped>("reference/setpoint", 1);
@@ -45,6 +50,9 @@ trajectoryPublisher::trajectoryPublisher(const ros::NodeHandle& nh, const ros::N
   nh_.param<double>("/v_max", v_max, 2);
   nh_.param<double>("/a_max", a_max, 2);
   nh_.param<double>("/j_max", j_max, 3);
+  nh_.param<double>("trajectory_publisher/trajLen", trajLen, 10);
+
+  std::cout<<"trajLen: "<<trajLen<<std::endl;
 
   newTraj=false;
   dimension = 3;
@@ -163,14 +171,13 @@ void trajectoryPublisher::getPolyTrajectory(void){
 
   }
   else if (target_trajectoryID_ == 4 || target_trajectoryID_ == 5){
-
-    int length=10;
+    
     middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(1,0,1));
     middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,0));
     // middle.addConstraint(mav_trajectory_generation::derivative_order::ACCELERATION, Eigen::Vector3d(0,0,0));
     vertices.push_back(middle);
 
-    middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(1,length,1));
+    middle.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(1,trajLen,1));
     middle.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,0));
     // middle.addConstraint(mav_trajectory_generation::derivative_order::ACCELERATION, Eigen::Vector3d(0,0,0));
     vertices.push_back(middle);
@@ -180,7 +187,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
     // middle2.addConstraint(mav_trajectory_generation::derivative_order::ACCELERATION, Eigen::Vector3d(0,0,0));
     vertices.push_back(middle2);
 
-    middle3.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(1,length,1));
+    middle3.addConstraint(mav_trajectory_generation::derivative_order::POSITION, Eigen::Vector3d(1,trajLen,1));
     middle3.addConstraint(mav_trajectory_generation::derivative_order::VELOCITY, Eigen::Vector3d(0,0,0));
     // middle3.addConstraint(mav_trajectory_generation::derivative_order::ACCELERATION, Eigen::Vector3d(0,0,0));
     vertices.push_back(middle3);

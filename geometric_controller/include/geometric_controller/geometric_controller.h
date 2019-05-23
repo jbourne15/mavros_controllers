@@ -107,7 +107,7 @@ class geometricCtrl
     int ctrl_mode_;
     bool landing_commanded_;
     bool use_gzstates_, sim_enable_;
-    double kp_rot_, kd_rot_;
+    double kp_rot_, kd_rot_, gainCA;
     double reference_request_dt_;
     double xs, ys, zs, sourceObjSize; // source position for obstacle
     /* double attctrl_tau_; */
