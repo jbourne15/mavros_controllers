@@ -1255,9 +1255,19 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;    
 	
 	a_des = a_fb - g_;
-	
-	q_des = acc2quaternion(a_des, mavYaw_);
-	cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
+
+
+	a_des_history[ades_idx]=a_des;    
+
+	a_des_filtered = std::accumulate(a_des_history.begin(), a_des_history.end(), Eigen::Vector3d(0,0,0)) / a_des_history.size();
+
+	ades_idx++;
+
+	if(ades_idx>a_des_history.size()) ades_idx=0;
+    
+    
+	q_des = acc2quaternion(a_des_filtered, mavYaw_);
+	cmdBodyRate_ = attcontroller(q_des, a_des_filtered, mavAtt_); //Calculate BodyRate
 	cmdBodyRate_(2)=0;
 	
 	if (((targetPos_noCA-mavPos_).norm() < 0.1 && mavVel_.norm()<.35) && mavPos_(2)>0.6 && holdPos_(2)==1.0 && std::all_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;}) && std::all_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;})){
@@ -1462,7 +1472,6 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     ades_idx++;
 
     if(ades_idx>a_des_history.size()) ades_idx=0;
-
     
     
     q_des = acc2quaternion(a_des_filtered, mavYaw_);
