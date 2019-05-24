@@ -94,7 +94,9 @@ class geometricCtrl
     int mode, tpvh, target_trajectoryID_;
     int AGENT_NUMBER;
     std::vector<double> desiredRate, desiredAtt, attctrl_tau_p, attctrl_tau_d, attctrl_tau_i;
-    std::vector<ros::Time> agentInfo_time;    
+    std::vector<ros::Time> agentInfo_time;
+    std::vector<int> ctrs;
+    std::vector<std::chrono::time_point<std::chrono::system_clock>> startTimes;
 
     bool tuneRate, tuneAtt, avoiding, timeFlag, obstaclesOn, tunePosVel, newSourceData, outerBox;
     ros::Time finishedAvoid_time, avoid_time;

@@ -40,7 +40,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
   transCtr=0;
   start=std::chrono::system_clock::now();
-
+  
   newSourceData=false;
   q_des<< -0.7071068,0,0,-0.7071068;
   holdPos_<<0,0,0;
@@ -129,6 +129,9 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   }
 
   nh_.param<bool>("/useKalman", useKalman, true);
+
+  ctrs.resize(numAgents);
+  startTimes.resize(numAgents);
   
   if (useKalman){
 
@@ -906,6 +909,17 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
     xt(msg.agent_number-1,0) = xt(msg.agent_number-1,0)+vt(msg.agent_number-1,0)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();
     xt(msg.agent_number-1,1) = xt(msg.agent_number-1,1)+vt(msg.agent_number-1,1)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();
     xt(msg.agent_number-1,2) = xt(msg.agent_number-1,2)+vt(msg.agent_number-1,2)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();
+
+
+    if (ctrs[msg.agent_number-1]==0){ // start timer
+      startTimes[msg.agent_number-1] = std::chrono::system_clock::now();
+    }
+    auto end = std::chrono::system_clock::now();
+    std::chrono::duration<double> elapsed_seconds=end-start;
+    
+    //std::cout<<"transmit time="<<t1<<std::endl;    
+    std::cout<<"AGENT_NUMBER="<<AGENT_NUMBER<<" FROM="<<(msg.agent_number*1.0)<<" transmit per sec "<<ctrs[msg.agent_number-1]<<", "<<elapsed_seconds.count()<<", "<<ctrs[msg.agent_number-1]/(elapsed_seconds.count())<<std::endl;
+    ctrs[msg.agent_number-1]++;
         
     if (useKalman && kfInit[msg.agent_number-1]){
     
