@@ -130,8 +130,9 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
   nh_.param<bool>("/useKalman", useKalman, true);
 
-  ctrs.resize(numAgents);
+  ctrs.resize(numAgents);  
   startTimes.resize(numAgents);
+  std::fill(ctrs.begin(), ctrs.end(), 0);
   
   if (useKalman){
 
@@ -237,8 +238,9 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   
    gzmavposeSub_ = nh_.subscribe("/gazebo/model_states", 1, &geometricCtrl::gzmavposeCallback, this, ros::TransportHints().tcpNoDelay());
 
+
    agentSub_ = nh_.subscribe("/agent_mps_data",1, &geometricCtrl::agentsCallback, this, ros::TransportHints().tcpNoDelay());
-    
+
    ctrltriggerServ_ = nh_.advertiseService(agentName+"/tigger_rlcontroller", &geometricCtrl::ctrltriggerCallback, this);
    cmdloop_timer_    = nh_.createTimer(ros::Duration(0.01), &geometricCtrl::cmdloopCallback, this); 
    statusloop_timer_ = nh_.createTimer(ros::Duration(1), &geometricCtrl::statusloopCallback, this); 
@@ -246,7 +248,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
    checkData_timer_  = nh_.createTimer(ros::Duration(5), &geometricCtrl::checkDataCallback, this);
 
    quadModePub_ = nh_.advertise<std_msgs::Int16>(agentName+"/quadMode", 1);
-
+  
    for(int i=0;i<numAgents;++i){    
      std::string topicName = "agent"+std::to_string(AGENT_NUMBER)+"_"+std::to_string(i+1);
      agentPos_pub.push_back(nh_.advertise<visualization_msgs::Marker>(topicName, 1));
@@ -308,7 +310,6 @@ void geometricCtrl::updateAgents(void) {
   
   for(int i=0; i<numAgents; i++){
     if (i==(AGENT_NUMBER-1)){
-
 
       //errorsumOri_ = errorsumOri_+(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1)));
 
@@ -876,6 +877,8 @@ void geometricCtrl::setupScenario(void) {
 
 void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
 
+  auto st = std::chrono::system_clock::now();
+
   bool validGPS = msg.mps.GPS_latitude<180 && msg.mps.GPS_latitude>-180 && msg.mps.GPS_longitude<180 && msg.mps.GPS_longitude>-180 && (msg.mps.GPS_latitude!=0 && msg.mps.GPS_longitude!=0);
     
   if (validGPS && msg.agent_number!=AGENT_NUMBER && g_geodetic_converter.isInitialised())
@@ -910,16 +913,24 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
     xt(msg.agent_number-1,1) = xt(msg.agent_number-1,1)+vt(msg.agent_number-1,1)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();
     xt(msg.agent_number-1,2) = xt(msg.agent_number-1,2)+vt(msg.agent_number-1,2)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();
 
-
     if (ctrs[msg.agent_number-1]==0){ // start timer
+      ROS_INFO("SETTING UP START TIME");
       startTimes[msg.agent_number-1] = std::chrono::system_clock::now();
+      ctrs[msg.agent_number-1]++;
     }
-    auto end = std::chrono::system_clock::now();
-    std::chrono::duration<double> elapsed_seconds=end-start;
+    if(ctrs[msg.agent_number-1]!=0){
+      auto end = std::chrono::system_clock::now();
+      std::chrono::duration<double> elapsed_seconds=end-startTimes[msg.agent_number-1];
     
-    //std::cout<<"transmit time="<<t1<<std::endl;    
-    std::cout<<"AGENT_NUMBER="<<AGENT_NUMBER<<" FROM="<<(msg.agent_number*1.0)<<" transmit per sec "<<ctrs[msg.agent_number-1]<<", "<<elapsed_seconds.count()<<", "<<ctrs[msg.agent_number-1]/(elapsed_seconds.count())<<std::endl;
-    ctrs[msg.agent_number-1]++;
+      //std::cout<<"transmit time="<<t1<<std::endl;    
+      std::cout<<"AGENT_NUMBER="<<AGENT_NUMBER<<" FROM="<<(msg.agent_number*1.0)<<" transmit per sec "<<ctrs[msg.agent_number-1]<<", "<<elapsed_seconds.count()<<", "<<ctrs[msg.agent_number-1]/(elapsed_seconds.count())<<std::endl;
+      ctrs[msg.agent_number-1]++;
+
+      if (elapsed_seconds.count()>30){
+	ctrs[msg.agent_number-1]=0;
+      }
+    }  
+
         
     if (useKalman && kfInit[msg.agent_number-1]){
     
@@ -950,6 +961,11 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
   //int t=1;
   //ros::spinOnce();
   //}
+
+  auto ed = std::chrono::system_clock::now();
+  std::chrono::duration<double> elapsed_=ed-st;
+  std::cout<<"elapsed_="<<elapsed_.count()<<std::endl;
+
 }
 
 void geometricCtrl::sourceCallback(const enif_iuc::AgentSource &msg){
