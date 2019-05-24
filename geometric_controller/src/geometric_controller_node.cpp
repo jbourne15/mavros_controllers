@@ -132,6 +132,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
   ctrs.resize(numAgents);  
   startTimes.resize(numAgents);
+  e_time.resize(numAgents);
   std::fill(ctrs.begin(), ctrs.end(), 0);
   
   if (useKalman){
@@ -877,8 +878,6 @@ void geometricCtrl::setupScenario(void) {
 
 void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
 
-  auto st = std::chrono::system_clock::now();
-
   bool validGPS = msg.mps.GPS_latitude<180 && msg.mps.GPS_latitude>-180 && msg.mps.GPS_longitude<180 && msg.mps.GPS_longitude>-180 && (msg.mps.GPS_latitude!=0 && msg.mps.GPS_longitude!=0);
     
   if (validGPS && msg.agent_number!=AGENT_NUMBER && g_geodetic_converter.isInitialised())
@@ -920,17 +919,21 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
     }
     if(ctrs[msg.agent_number-1]!=0){
       auto end = std::chrono::system_clock::now();
-      std::chrono::duration<double> elapsed_seconds=end-startTimes[msg.agent_number-1];
-    
-      //std::cout<<"transmit time="<<t1<<std::endl;    
-      std::cout<<"AGENT_NUMBER="<<AGENT_NUMBER<<" FROM="<<(msg.agent_number*1.0)<<" transmit per sec "<<ctrs[msg.agent_number-1]<<", "<<elapsed_seconds.count()<<", "<<ctrs[msg.agent_number-1]/(elapsed_seconds.count())<<std::endl;
+
+      e_time[msg.agent_number-1] = end-startTimes[msg.agent_number-1];
+      
+      std::cout<<"AGENT_NUMBER="<<AGENT_NUMBER<<" freq = [";
+      for (int i=0;i<numAgents;i++){
+	std::cout<<" "<<ctrs[msg.agent_number-1]/e_time[i].count();
+      }
+      std::cout<<"]"<<std::endl;
+      
       ctrs[msg.agent_number-1]++;
 
-      if (elapsed_seconds.count()>30){
+      if (e_time[msg.agent_number-1].count()>60){
 	ctrs[msg.agent_number-1]=0;
       }
-    }  
-
+    }
         
     if (useKalman && kfInit[msg.agent_number-1]){
     
@@ -961,10 +964,6 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
   //int t=1;
   //ros::spinOnce();
   //}
-
-  auto ed = std::chrono::system_clock::now();
-  std::chrono::duration<double> elapsed_=ed-st;
-  std::cout<<"elapsed_="<<elapsed_.count()<<std::endl;
 
 }
 
