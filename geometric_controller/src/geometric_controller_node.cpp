@@ -924,7 +924,7 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
       
       std::cout<<"AGENT_NUMBER="<<AGENT_NUMBER<<" freq = [";
       for (int i=0;i<numAgents;i++){
-	std::cout<<" "<<ctrs[msg.agent_number-1]/e_time[i].count();
+	std::cout<<" "<<ctrs[i]/e_time[i].count();
       }
       std::cout<<"]"<<std::endl;
       
