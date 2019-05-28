@@ -51,8 +51,10 @@ trajectoryPublisher::trajectoryPublisher(const ros::NodeHandle& nh, const ros::N
   nh_.param<double>("/a_max", a_max, 2);
   nh_.param<double>("/j_max", j_max, 3);
   nh_.param<double>("trajectory_publisher/trajLen", trajLen, 10);
+  nh_.param<double>("trajectory_publisher/trajTime", trajTime, 10);
 
   std::cout<<"trajLen: "<<trajLen<<std::endl;
+  std::cout<<"trajTime: "<<trajTime<<std::endl;
 
   newTraj=false;
   dimension = 3;
@@ -262,7 +264,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
     parameters.time_alloc_method =
       mav_trajectory_generation::NonlinearOptimizationParameters::kMellingerOuterLoop;
     parameters.algorithm = nlopt::LD_LBFGS;
-    std::fill (segment_times.begin(),segment_times.end(),6);
+    std::fill (segment_times.begin(),segment_times.end(),trajTime);
   }
 
   // parameters.algorithm = nlopt::LD_LBFGS;

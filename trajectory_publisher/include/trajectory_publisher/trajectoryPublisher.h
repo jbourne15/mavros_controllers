@@ -67,7 +67,7 @@ private:
   Eigen::Vector3d mavPos_;
   Eigen::Vector4d mavAtt_;
   std::string agentName;
-  double traj_radius_, traj_omega_, trajLen;
+  double traj_radius_, traj_omega_, trajLen, trajTime;
   double v_max,a_max,j_max;
   double theta_ = 0.0;
   double controlUpdate_dt_;
