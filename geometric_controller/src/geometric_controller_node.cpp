@@ -330,13 +330,15 @@ void geometricCtrl::updateAgents(void) {
     else{
       disp = -rowm(xt,i)+rowm(xt,AGENT_NUMBER-1);
 
-      e_time[i] = std::chrono::system_clock::now()-startTimes[i];
+      if(ctrs[i]!=0){
+	e_time[i] = std::chrono::system_clock::now()-startTimes[i];
       
-      if ((e_time[i].count()/ctrs[i])<0.2){
-	ktime=1;
-      }
-      else{
-	ktime=(e_time[i].count()/ctrs[i])/0.2;
+	if ((e_time[i].count()/ctrs[i])<0.2){
+	  ktime=1;
+	}
+	else{
+	  ktime=(e_time[i].count()/ctrs[i])/0.2;
+	}
       }
 
       //std::cout<<"ktime["<<i<<"]="<<ktime<<std::endl;
@@ -1347,7 +1349,10 @@ void geometricCtrl::mavstateCallback(const mavros_msgs::State::ConstPtr& msg){
   current_state_ = *msg;
   if (current_state_.mode.compare("OFFBOARD")!=0 || !current_state_.armed){
     quadMode.data=1;
-  }    
+    std::fill(newVelData.begin(), newVelData.end(), false);
+    std::fill(newPosData.begin(), newPosData.end(), false);
+    std::fill(ctrs.begin(), ctrs.end(), 0);
+  }  
 }
 
 void geometricCtrl::statusloopCallback(const ros::TimerEvent& event){  
