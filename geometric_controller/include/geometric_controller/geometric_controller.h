@@ -42,6 +42,7 @@
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include <sensor_msgs/Imu.h>
 #include <std_msgs/Int16.h>
+#include <std_msgs/Float64MultiArray.h>
 
 #include <RVO.h>
 #include <dlib/matrix.h>
@@ -81,8 +82,9 @@ class geometricCtrl
     ros::Publisher cur_attRefPub_;
     ros::Publisher mavPosVelPub_;
     ros::Publisher mavAccelPub_, quadModePub_;
-    ros::Publisher bPub_;
+    ros::Publisher bPub_, hzPub_;
     ros::Publisher obstaclesPub_;
+    ros::Publisher controlActionPub_, controlActionIntPub_;
     std::vector<ros::Publisher> agentPos_pub, agentVel_pub;
     ros::ServiceClient arming_client_;
     ros::ServiceClient set_mode_client_;

@@ -249,6 +249,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
    checkData_timer_  = nh_.createTimer(ros::Duration(5), &geometricCtrl::checkDataCallback, this);
 
    quadModePub_ = nh_.advertise<std_msgs::Int16>(agentName+"/quadMode", 1);
+   hzPub_ = nh_.advertise<std_msgs::Float64MultiArray>(agentName+"/otherQuadHz", 1);
   
    for(int i=0;i<numAgents;++i){    
      std::string topicName = "agent"+std::to_string(AGENT_NUMBER)+"_"+std::to_string(i+1);
@@ -263,7 +264,10 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   
    bPub_ = nh_.advertise<geometry_msgs::TwistStamped>(agentName+"/b", 1);
    obstaclesPub_ = nh_.advertise<visualization_msgs::Marker>(agentName+"/obstacles",1);
-  
+   controlActionPub_ = nh_.advertise<geometry_msgs::TwistStamped>(agentName+"/controlAction",1);
+   controlActionIntPub_ = nh_.advertise<geometry_msgs::TwistStamped>(agentName+"/controlActionInt",1);
+ 
+   
    angularVelPub_ = nh_.advertise<mavros_msgs::AttitudeTarget>(agentName+"/command/bodyrate_command", 1);
   referencePosePubCA_ = nh_.advertise<geometry_msgs::PoseStamped>(agentName+"/reference/poseCA", 1);
   referencePosePub_ = nh_.advertise<geometry_msgs::PoseStamped>(agentName+"/reference/pose", 1);
@@ -309,11 +313,23 @@ void geometricCtrl::updateAgents(void) {
   dlib::matrix<double> disp;
   double k=2*radius*gainCA;
   double ktime=1;
+
+  std_msgs::Float64MultiArray quadHz;
+  std_msgs::MultiArrayDimension myDim;
+  
+  quadHz.layout.dim.push_back(myDim);
+  quadHz.layout.dim[0].size = numAgents;
+  quadHz.layout.dim[0].stride = 2;
   
   for(int i=0; i<numAgents; i++){
     if (i==(AGENT_NUMBER-1)){
 
       //errorsumOri_ = errorsumOri_+(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1)));
+      
+      // if (AGENT_NUMBER==1){
+      // 	// here!
+      // 	targetVel_noCA<<0,0,0;
+      // }
 
       desVel = 2*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + 0.5*RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
       
@@ -332,14 +348,24 @@ void geometricCtrl::updateAgents(void) {
 
       if(ctrs[i]!=0){
 	e_time[i] = std::chrono::system_clock::now()-startTimes[i];
-      
-	if ((e_time[i].count()/ctrs[i])<0.2){
+
+	if (e_time[i].count() < 0.25){
 	  ktime=1;
 	}
 	else{
-	  ktime=(e_time[i].count()/ctrs[i])/0.2;
+	  ktime = 4*e_time[i].count();
 	}
+	// if ((e_time[i].count()/ctrs[i])<0.1){
+	//   ktime=1;
+	// }
+	// else{
+	//   ktime=(e_time[i].count()/ctrs[i])/0.1;
+	// }
       }
+
+
+      quadHz.data.push_back(e_time[i].count());
+      quadHz.data.push_back(ktime);      
 
       //std::cout<<"ktime["<<i<<"]="<<ktime<<std::endl;
 
@@ -350,7 +376,7 @@ void geometricCtrl::updateAgents(void) {
 	disp = k/dlib::length(disp)*disp/dlib::length(disp)*ktime;
       }
                         
-      //sim->setAgentPrefVelocity(i, RVO::Vector2(vt(i,0), vt(i,1)));
+      // sim->setAgentPrefVelocity(i, RVO::Vector2(vt(i,0), vt(i,1)));
       // sim->setAgentVelocity    (i, RVO::Vector2(vt(i,0), vt(i,1)));
       
       sim->setAgentPrefVelocity(i, RVO::Vector2(vt(i,0)+disp(0), vt(i,1)+disp(1)));
@@ -359,6 +385,8 @@ void geometricCtrl::updateAgents(void) {
       
     }
   }
+  
+  hzPub_.publish(quadHz);
 }
 
 void geometricCtrl::updateCA_velpos(void){
@@ -692,6 +720,12 @@ void geometricCtrl::updateGoal(void){
   for (int i = 0; i < numAgents; ++i) {
     if (i==(AGENT_NUMBER-1)){
       // goals.push_back(RVO::Vector2(targetPos_(0),targetPos_(1)));
+
+      // if (AGENT_NUMBER==1){
+      // 	// here!
+      // 	targetPos_noCA=holdPos_;
+      // }
+      
       goals.push_back(RVO::Vector2(targetPos_noCA(0),targetPos_noCA(1)));
     }
     else{
@@ -928,27 +962,15 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
       xt(msg.agent_number-1,2) = xt(msg.agent_number-1,2)+vt(msg.agent_number-1,2)*(ros::Time::now()-agentInfo_time[msg.agent_number-1]).toSec();
     }
 
+    
+
     if (ctrs[msg.agent_number-1]==0){ // start timer
-      ROS_INFO("SETTING UP START TIME");
       startTimes[msg.agent_number-1] = std::chrono::system_clock::now();
       ctrs[msg.agent_number-1]++;
     }
-    if(ctrs[msg.agent_number-1]!=0){
-      auto end = std::chrono::system_clock::now();
-
-      e_time[msg.agent_number-1] = end-startTimes[msg.agent_number-1];
-      
-      std::cout<<"AGENT_NUMBER="<<AGENT_NUMBER<<" freq = [";
-      for (int i=0;i<numAgents;i++){
-	std::cout<<" "<<ctrs[i]/e_time[i].count();
-      }
-      std::cout<<"]"<<std::endl;
-      
-      ctrs[msg.agent_number-1]++;
-
-      if (e_time[msg.agent_number-1].count()>60){
-	ctrs[msg.agent_number-1]=0;
-      }
+    else{
+      e_time[msg.agent_number-1] = std::chrono::system_clock::now()-startTimes[msg.agent_number-1];      
+      startTimes[msg.agent_number-1] = std::chrono::system_clock::now();
     }
         
     if (useKalman && kfInit[msg.agent_number-1]){
@@ -1012,9 +1034,9 @@ void geometricCtrl::targetAccelCallback(const geometry_msgs::AccelStamped& msg) 
   accel_CA.accel.linear.y=targetAcc_(1);
   accel_CA.accel.linear.z=targetAcc_(2);
 
-  //accel_CA.accel.angular.x=a_des_filtered(0);
-  //accel_CA.accel.angular.y=a_des_filtered(1);
-  //accel_CA.accel.angular.z=a_des_filtered(2);
+  accel_CA.accel.angular.x=a_des(0);
+  accel_CA.accel.angular.y=a_des(1);
+  accel_CA.accel.angular.z=a_des(2);
 
   mavAccelPub_.publish(accel_CA);
 
@@ -1289,9 +1311,6 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	if (action_int_.norm()>max_fb_acc_){
 	  action_int_=(max_fb_acc_/ action_int_.norm())*action_int_;
 	}
-	if ((-action_int_.norm())<(-max_fb_acc_)){
-	  action_int_=-(max_fb_acc_ / action_int_.norm())*action_int_;
-	}
 	
 	/// Compute BodyRate commands using differential flatness
 	/// Controller based on Faessler 2017
@@ -1300,6 +1319,27 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;    
 	
 	a_des = a_fb - g_;
+
+	Eigen::Vector3d controlA_p = Kpos_.asDiagonal() * errorPos_;
+	Eigen::Vector3d controlA_v = Kvel_.asDiagonal() * errorVel_;
+	Eigen::Vector3d controlA_i = action_int_;
+
+	geometry_msgs::TwistStamped controlAction, controlActionInt;
+	controlAction.header.stamp = ros::Time::now();
+	controlActionInt.header.stamp = ros::Time::now();
+	controlAction.twist.linear.x = controlA_p(0);
+	controlAction.twist.linear.y = controlA_p(1);
+	controlAction.twist.linear.z = controlA_p(2);
+	controlAction.twist.angular.x = controlA_v(0);
+	controlAction.twist.angular.y = controlA_v(1);
+	controlAction.twist.angular.z = controlA_v(2);
+
+	controlActionInt.twist.linear.x = controlA_i(0);
+	controlActionInt.twist.linear.y = controlA_i(1);
+	controlActionInt.twist.linear.z = controlA_i(2);
+	
+	controlActionPub_.publish(controlAction);
+	controlActionIntPub_.publish(controlActionInt);
 
 
 	//a_des_history[ades_idx]=a_des;    
@@ -1314,8 +1354,25 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	q_des = acc2quaternion(a_des, mavYaw_);
 	cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
 	cmdBodyRate_(2)=0;
+
+
+	geometry_msgs::QuaternionStamped qdes, qcur;
+	qdes.header.stamp = ros::Time::now();
+	qcur.header.stamp = qdes.header.stamp;
+	qdes.quaternion.x = q_des(1);
+	qdes.quaternion.y = q_des(2);
+	qdes.quaternion.z = q_des(3);
+	qdes.quaternion.w = q_des(0);
+    
+	qcur.quaternion.x = mavAtt_(1);
+	qcur.quaternion.y = mavAtt_(2);
+	qcur.quaternion.z = mavAtt_(3);
+	qcur.quaternion.w = mavAtt_(0);
+
+	des_attRefPub_.publish(qdes);
+	cur_attRefPub_.publish(qcur);
 	
-	if (((targetPos_noCA-mavPos_).norm() < 0.1 && mavVel_.norm()<.35) && mavPos_(2)>0.6 && holdPos_(2)==1.0 && std::all_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;}) && std::all_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;})){
+	if (((targetPos_noCA-mavPos_).norm() < 0.1 && targetPos_noCA(2)>0.75 && mavVel_.norm()<.35) && mavPos_(2)>0.75 && holdPos_(2)==1.0 && std::all_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;}) && std::all_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;})){
 	  if(target_trajectoryID_==0){
 	    quadMode.data=2; //stay in hold mode
 	  }
@@ -1485,9 +1542,6 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     if (action_int_.norm()>max_fb_acc_){
       action_int_=(max_fb_acc_/ action_int_.norm())*action_int_;
     }
-    if ((-action_int_.norm())<(-max_fb_acc_)){
-      action_int_=-(max_fb_acc_ / action_int_.norm())*action_int_;
-    }
 
     // errorVel_history[ev_idx]=errorVel_;
 
@@ -1499,19 +1553,51 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     /// Compute BodyRate commands using differential flatness
     /// Controller based on Faessler 2017
     q_ref = acc2quaternion(a_ref - g_, mavYaw_);
-    R_ref = quat2RotMatrix(q_ref);
+    //R_ref = quat2RotMatrix(q_ref);
     a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_ + action_int_; //feedforward term for trajectory error
+
+
+    Eigen::Vector3d controlA_p = Kpos_.asDiagonal() * errorPos_;
+    Eigen::Vector3d controlA_v = Kvel_.asDiagonal() * errorVel_;
+    Eigen::Vector3d controlA_i = action_int_;    
+      
+
+    geometry_msgs::TwistStamped controlAction, controlActionInt;
+    controlAction.header.stamp = ros::Time::now();
+    controlActionInt.header.stamp = ros::Time::now();
+    controlAction.twist.linear.x = controlA_p(0);
+    controlAction.twist.linear.y = controlA_p(1);
+    controlAction.twist.linear.z = controlA_p(2);
+    controlAction.twist.angular.x = controlA_v(0);
+    controlAction.twist.angular.y = controlA_v(1);
+    controlAction.twist.angular.z = controlA_v(2);
+
+    controlActionInt.twist.linear.x = controlA_i(0);
+    controlActionInt.twist.linear.y = controlA_i(1);
+    controlActionInt.twist.linear.z = controlA_i(2);
+	
+    controlActionPub_.publish(controlAction);
+    controlActionIntPub_.publish(controlActionInt);
+
+    
     
     if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;    
     
-    a_rd = R_ref * D_.asDiagonal() * R_ref.transpose() * targetVel_; //Rotor drag
+    //a_rd = R_ref * D_.asDiagonal() * R_ref.transpose() * targetVel_; //Rotor drag
     // a_des = a_fb + a_ref - a_rd - g_;
     a_des = a_fb + a_ref - g_;
 
-    if(a_des(0) > xyAccelMax ) a_des(0) = xyAccelMax;
-    if(a_des(0) < -xyAccelMax) a_des(0) = -xyAccelMax;
-    if(a_des(1) > xyAccelMax ) a_des(1) = xyAccelMax;
-    if(a_des(1) < -xyAccelMax) a_des(1) = -xyAccelMax;
+
+    if (Eigen::Vector2d(a_des(0),a_des(1)).norm()>xyAccelMax){
+      Eigen::Vector2d new_a_des = xyAccelMax/Eigen::Vector2d(a_des(0),a_des(1)).norm() * Eigen::Vector2d(a_des(0),a_des(1));
+      a_des(0) = new_a_des(0);
+      a_des(1) = new_a_des(1);
+    }
+
+    // if(a_des(0) > xyAccelMax ) a_des(0) = xyAccelMax;
+    // if(a_des(0) < -xyAccelMax) a_des(0) = -xyAccelMax;
+    // if(a_des(1) > xyAccelMax ) a_des(1) = xyAccelMax;
+    // if(a_des(1) < -xyAccelMax) a_des(1) = -xyAccelMax;
         
     //a_des_history[ades_idx]=a_des;    
 
@@ -1520,9 +1606,29 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     //ades_idx++;
 
     //if(ades_idx>a_des_history.size()) ades_idx=0;
+
+    // std::normal_distribution<double> Gsampler(0.0,.1);
+    // std::mt19937 generator;
+    // unsigned seed_time = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    // generator.seed(seed_time);
+
+    // a_des(0)=a_des(0)+Gsampler(generator);
+    // a_des(1)=a_des(1)+Gsampler(generator);
+    // a_des(2)=a_des(2)+Gsampler(generator);
+
     
     
     q_des = acc2quaternion(a_des, mavYaw_);
+
+
+
+    // q_des(0)=q_des(0)+Gsampler(generator);
+    // q_des(1)=q_des(1)+Gsampler(generator);
+    // q_des(2)=q_des(2)+Gsampler(generator);
+    // q_des(3)=q_des(3)+Gsampler(generator);
+    //q_des.norm();
+
+      
     cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
 
     // ev_idx++;    

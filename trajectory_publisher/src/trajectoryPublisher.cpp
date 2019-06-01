@@ -446,7 +446,7 @@ void trajectoryPublisher::moveReference() {
       
 	if (quadMode==2){
 	  getPolyTrajectory();
-	  //ros::Duration(2).sleep();	  
+	  ros::Duration(2).sleep();
 	}
 	else if (replan && newTraj && quadMode!=1)
 	  {
