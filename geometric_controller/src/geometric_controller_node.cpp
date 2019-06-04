@@ -1378,7 +1378,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	des_attRefPub_.publish(qdes);
 	cur_attRefPub_.publish(qcur);
 	
-	if (((targetPos_noCA-mavPos_).norm() < 0.1 && targetPos_noCA(2)>0.75 && mavVel_.norm()<.35) && mavPos_(2)>0.75 && holdPos_(2)==1.0 && std::all_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;}) && std::all_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;})){
+	if (((targetPos_noCA-mavPos_).norm() < 0.5 && targetPos_noCA(2)>0.75 && mavVel_.norm()<.5) && mavPos_(2)>0.75 && holdPos_(2)==1.0 && std::all_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;}) && std::all_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;})){
 	  if(target_trajectoryID_==0){
 	    quadMode.data=2; //stay in hold mode
 	  }
