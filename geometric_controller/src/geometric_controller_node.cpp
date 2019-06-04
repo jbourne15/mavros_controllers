@@ -20,7 +20,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<int>("geometric_controller/agent_number", AGENT_NUMBER, 1);
   nh_.param<bool>("geometric_controller/tunePosVel", tunePosVel, false);
   nh_.param<int>("trajectory_publisher/trajectoryID", target_trajectoryID_, -1);
-  nh_.param<double>("geometric_controller/sourceObjSize", sourceObjSize, 0.5);
+  nh_.param<double>("geometric_controller/sourceObjSize", sourceObjSize, 2);
   nh_.param<double>("geometric_controller/gainCA", gainCA, 2.25);
 
   std::cout<<"gainCA "<<gainCA<<std::endl;
@@ -437,7 +437,7 @@ void geometricCtrl::updateCA_velpos(void){
   
   updateAgents();
   sim->doStep();
-  // sim->doStep();  // predict farther forward?
+  
   RVO::Vector2 pos, vel;
 
   // std::cout<<"vel: "<<std::endl;
@@ -449,12 +449,12 @@ void geometricCtrl::updateCA_velpos(void){
   Eigen::Vector3d targetPos_CA, targetVel_CA;
 
   targetVel_CA << vel.x(), vel.y(), targetVel_noCA(2);  
-  if (targetVel_CA.norm()>0.05){
+  if (targetVel_CA.norm()>0.01){
     targetPos_CA << pos.x(), pos.y(), targetPos_noCA(2);
   }
   else{
     //this fixes drift at the end of traj
-    targetPos_CA=targetPos_noCA;
+    targetPos_CA << pos.x(), pos.y(), targetPos_noCA(2);
     targetVel_CA=targetVel_CA*0;
   }
   
@@ -701,15 +701,12 @@ void geometricCtrl::wait4Home(void){
       ROS_INFO_THROTTLE(5,"[%d ctrl] tunePosVel checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), newPosData[AGENT_NUMBER-1], newVelData[AGENT_NUMBER-1], newRefData, (runAlg.compare("info")==0));
     }
     else{
-      ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData, (runAlg.compare("info")!=0));
-	
+      // ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData, (runAlg.compare("info")!=0));
+      ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d, newSourceData=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData, (runAlg.compare("info")!=0), !newSourceData);	
     }
-    // ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d, newSourceData=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData, (runAlg.compare("info")!=0), !newSourceData);
     
-
-  // } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData || (runAlg.compare("info")!=0) || (!newSourceData || !sim_enable_)) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
-    } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData || (runAlg.compare("info")!=0)) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
-  //} while ((!g_geodetic_converter.isInitialised() || !newRefData) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
+  } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData || (runAlg.compare("info")!=0) || !(newSourceData || tunePosVel) ) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
+  // } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData || (runAlg.compare("info")!=0)) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
 
   newDataFlag=true;
 }
@@ -746,7 +743,7 @@ void geometricCtrl::setupScenario(void) {
   sim->setTimeStep(.01f); 
   
   // neighborDist,maxNeighbors,timeHorizon,timeHorizonObst,radius,maxSpeed,
-  sim->setAgentDefaults(30.0f, numAgents*2, timeH, 1.0f, radius, 1.25*v_max);
+  sim->setAgentDefaults(30.0f, numAgents*2, timeH, timeH, radius, 1.25*v_max);
   
 
   for (int i=0;i<numAgents; i++){
@@ -777,14 +774,15 @@ void geometricCtrl::setupScenario(void) {
 
   if (target_trajectoryID_==4){
 
-    float triSize=0.25;
     double x, y;
     x=1;
-    y=4;
+    y=5;
 
-    obstacle.push_back(RVO::Vector2(x,y+triSize/2.0));
-    obstacle.push_back(RVO::Vector2(x-triSize/2.0, y-triSize/2.0));
-    obstacle.push_back(RVO::Vector2(x+triSize/2.0, y-triSize/2.0));
+    obstaclesOn=true;
+
+    obstacle.push_back(RVO::Vector2(x,y+sourceObjSize/2.0));
+    obstacle.push_back(RVO::Vector2(x-sourceObjSize/2.0, y-sourceObjSize/2.0));
+    obstacle.push_back(RVO::Vector2(x+sourceObjSize/2.0, y-sourceObjSize/2.0));
     
     obstacles.push_back(obstacle);
     obstacle.clear();
@@ -1065,7 +1063,7 @@ void geometricCtrl::targetCallback(const geometry_msgs::TwistStamped& msg) {
 
   if (avoidAgents && newDataFlag && !tuneAtt && !tuneRate && simSetup){
     updateCA_velpos();
-  }  
+  }
   
   if (targetVel_.norm()>=0.25){
     mavYaw_ = std::atan2(targetVel_(1),targetVel_(0));
