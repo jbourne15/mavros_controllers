@@ -1261,6 +1261,7 @@ void geometricCtrl::armingCallback(const ros::TimerEvent& event){
       // if i am not tuning then let client handle arming and offboard mode
 	if (!current_state_.armed){ // reset integral error
 	  errorSum_ << 0.0, 0.0, 0.0;
+	  sumAtt << 0,0,0;
 	}
       }
             
