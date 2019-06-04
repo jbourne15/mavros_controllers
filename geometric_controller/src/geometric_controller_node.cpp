@@ -352,8 +352,11 @@ void geometricCtrl::updateAgents(void) {
 	if (e_time[i].count() < 0.25){
 	  ktime=1;
 	}
-	else{
+	else if(e_time[i].count()<1){
 	  ktime = 4*e_time[i].count();
+	}
+	else{
+	  ktime = 5;
 	}
 	// if ((e_time[i].count()/ctrs[i])<0.1){
 	//   ktime=1;
@@ -1254,9 +1257,12 @@ void geometricCtrl::armingCallback(const ros::TimerEvent& event){
 	  last_request_ = ros::Time::now();
 	}
       }
-      //else{
+      else{
       // if i am not tuning then let client handle arming and offboard mode
-      //}
+	if (!current_state_.armed){ // reset integral error
+	  errorSum_ << 0.0, 0.0, 0.0;
+	}
+      }
             
     }
     else{ // i am simulating
