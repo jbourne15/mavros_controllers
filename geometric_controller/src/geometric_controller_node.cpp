@@ -85,9 +85,11 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   agentName = ros::this_node::getNamespace();  
   agentName.erase(0,1);
 
-  targetPos_history.resize(25);
-  targetVel_history.resize(25);
+  targetPos_history.resize(5);
+  targetVel_history.resize(50);
 
+  t_idx=0;
+  
   errorVel_history.resize(50);
   ev_idx=0;
 
@@ -271,6 +273,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
    angularVelPub_ = nh_.advertise<mavros_msgs::AttitudeTarget>(agentName+"/command/bodyrate_command", 1);
   referencePosePubCA_ = nh_.advertise<geometry_msgs::PoseStamped>(agentName+"/reference/poseCA", 1);
   referencePosePub_ = nh_.advertise<geometry_msgs::PoseStamped>(agentName+"/reference/pose", 1);
+  referenceCA_setpointPub_ = nh_.advertise<geometry_msgs::TwistStamped>(agentName+"/reference/setpointCA", 1);
 
    // if (tuneAtt){
    des_attRefPub_ = nh_.advertise<geometry_msgs::QuaternionStamped>(agentName+"/desAtt",1);
@@ -331,7 +334,7 @@ void geometricCtrl::updateAgents(void) {
       // 	targetVel_noCA<<0,0,0;
       // }
 
-      desVel = 2*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + 0.5*RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
+      desVel = 0.5*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
       
       //desVel = 3*(RVO::Vector2(targetPos_noCA(0), targetPos_noCA(1)) - RVO::Vector2(mavPos_(0), mavPos_(1))) + 1/3.0*(RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1))- RVO::Vector2(mavVel_(0),mavVel_(1)));      
       //desVel = RVO::Vector2(targetVel_noCA(0), targetVel_noCA(1));
@@ -457,9 +460,20 @@ void geometricCtrl::updateCA_velpos(void){
     targetPos_CA << pos.x(), pos.y(), targetPos_noCA(2);
     targetVel_CA=targetVel_CA*0;
   }
+
+  // targetPos_history[t_idx]=targetPos_CA;
+  targetVel_history[t_idx]=targetVel_CA;
+
+  t_idx++;
+  if (t_idx==50){
+    t_idx=0;
+  }
   
   targetPos_ = targetPos_CA;
-  targetVel_ = targetVel_CA;
+  // targetVel_ = targetVel_CA;
+
+  // targetPos_ = accumulate( targetPos_history.begin(), targetPos_history.end(), Eigen::Vector3d(0,0,0))/targetPos_history.size();  
+  targetVel_ = accumulate( targetVel_history.begin(), targetVel_history.end(), Eigen::Vector3d(0,0,0))/targetVel_history.size();
 
 
   visualization_msgs::Marker otherAgentMarker, otherVelMarker;  
@@ -1421,8 +1435,12 @@ void geometricCtrl::statusloopCallback(const ros::TimerEvent& event){
 }
 
 void geometricCtrl::pubReferencePose(){
+  referenceSetpointCAMsg_.header.stamp=ros::Time::now();
+  referenceSetpointCAMsg_.header.frame_id="world";
+    
   referencePoseMsg_.header.stamp = ros::Time::now();
-  referencePoseMsg_.header.frame_id = "world";
+  referencePoseMsg_.header.frame_id = "world";  
+  
   referencePoseMsg_.pose.position.x = targetPos_noCA(0);
   referencePoseMsg_.pose.position.y = targetPos_noCA(1);
   referencePoseMsg_.pose.position.z = targetPos_noCA(2);
@@ -1438,13 +1456,27 @@ void geometricCtrl::pubReferencePose(){
     referencePoseMsgCA_.pose.position.x = holdPos_(0);
     referencePoseMsgCA_.pose.position.y = holdPos_(1);
     referencePoseMsgCA_.pose.position.z = holdPos_(2);
+    
+    referenceSetpointCAMsg_.twist.angular.x=holdPos_(0);
+    referenceSetpointCAMsg_.twist.angular.y=holdPos_(1);
+    referenceSetpointCAMsg_.twist.angular.z=holdPos_(2);
   }
   else{
     referencePoseMsgCA_.pose.position.x = targetPos_(0);
     referencePoseMsgCA_.pose.position.y = targetPos_(1);
     referencePoseMsgCA_.pose.position.z = targetPos_(2);
+
+    referenceSetpointCAMsg_.twist.angular.x=targetPos_(0);
+    referenceSetpointCAMsg_.twist.angular.y=targetPos_(1);
+    referenceSetpointCAMsg_.twist.angular.z=targetPos_(2);
   }
-  referencePosePubCA_.publish(referencePoseMsgCA_);
+  
+  referenceSetpointCAMsg_.twist.linear.x=targetVel_(0);
+  referenceSetpointCAMsg_.twist.linear.y=targetVel_(1);
+  referenceSetpointCAMsg_.twist.linear.z=targetVel_(2);
+  
+  referencePosePubCA_.publish(referencePoseMsgCA_);  
+  referenceCA_setpointPub_.publish(referenceSetpointCAMsg_);
 }
 
 void geometricCtrl::pubRateCommands(){
@@ -1557,7 +1589,7 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
 
     /// Compute BodyRate commands using differential flatness
     /// Controller based on Faessler 2017
-    q_ref = acc2quaternion(a_ref - g_, mavYaw_);
+    // q_ref = acc2quaternion(a_ref - g_, mavYaw_);
     //R_ref = quat2RotMatrix(q_ref);
     a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_ + action_int_; //feedforward term for trajectory error
 

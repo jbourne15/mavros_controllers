@@ -77,7 +77,7 @@ class geometricCtrl
     ros::Subscriber mavtwistSub_;
     ros::Subscriber rcSub_, source_sub;  
     ros::Publisher rotorVelPub_, angularVelPub_;
-    ros::Publisher referencePosePub_, referencePosePubCA_;
+    ros::Publisher referencePosePub_, referencePosePubCA_, referenceCA_setpointPub_;
     ros::Publisher des_attRefPub_, error_attPub_;
     ros::Publisher cur_attRefPub_;
     ros::Publisher mavPosVelPub_;
@@ -163,8 +163,11 @@ class geometricCtrl
     geometry_msgs::Vector3Stamped des_eulerRefMsg_;
     geometry_msgs::Vector3Stamped cur_eulerRefMsg_;
     geometry_msgs::AccelStamped accel_CA;
+    geometry_msgs::TwistStamped referenceSetpointCAMsg_;
 
     std::vector<Eigen::Vector3d> targetPos_history, targetVel_history;
+    int t_idx;
+    
     
     Eigen::Vector3d goalPos_, targetPos_, targetVel_, targetAcc_, targetJerk_, targetSnap_, targetPos_prev_, targetVel_prev_, targetCA_vel, targetCA_pos, targetPos_noCA, targetVel_noCA, targetAcc_noCA, targetPos_noCA_prev_, targetVel_noCA_prev_;
     Eigen::Vector3d mavPos_, mavVel_, mavRate_, holdPos_;
