@@ -1335,7 +1335,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	/// Controller based on Faessler 2017
 	a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_ + action_int_; //feedforward term for trajectory error
 	// if(a_fb(2) < -max_fb_acc_) a_fb(2) = -max_fb_acc_;
-	if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;    
+	if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;
 	
 	a_des = a_fb - g_;
 
@@ -1374,6 +1374,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
 	cmdBodyRate_(2)=0;
 
+	cmdBodyRate_(3)=std::max(0.0, std::min(1.0, a_fb(2))); //Calculate thrust;
 
 	geometry_msgs::QuaternionStamped qdes, qcur;
 	qdes.header.stamp = ros::Time::now();
@@ -1622,8 +1623,7 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     
     //a_rd = R_ref * D_.asDiagonal() * R_ref.transpose() * targetVel_; //Rotor drag
     // a_des = a_fb + a_ref - a_rd - g_;
-    a_des = a_fb + a_ref - g_;
-
+    a_des = a_fb + a_ref - g_;    
 
     if (Eigen::Vector2d(a_des(0),a_des(1)).norm()>xyAccelMax){
       Eigen::Vector2d new_a_des = xyAccelMax/Eigen::Vector2d(a_des(0),a_des(1)).norm() * Eigen::Vector2d(a_des(0),a_des(1));
@@ -1664,9 +1664,10 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     // q_des(2)=q_des(2)+Gsampler(generator);
     // q_des(3)=q_des(3)+Gsampler(generator);
     //q_des.norm();
-
       
     cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
+    
+    cmdBodyRate_(3)=std::max(0.0, std::min(1.0, a_fb(2))); //Calculate thrust;
 
     // ev_idx++;    
     // if (ev_idx>errorVel_history.size()) ev_idx=0;    
