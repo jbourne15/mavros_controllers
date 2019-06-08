@@ -1074,10 +1074,6 @@ void geometricCtrl::targetCallback(const geometry_msgs::TwistStamped& msg) {
   // Eigen::Vector3d pos,vel;
   targetPos_ << msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z;
   targetVel_ << msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z;
-
-  if (avoidAgents && newDataFlag && !tuneAtt && !tuneRate && simSetup){
-    updateCA_velpos();
-  }
   
   if (targetVel_.norm()>=0.25){
     mavYaw_ = std::atan2(targetVel_(1),targetVel_(0));
@@ -1299,11 +1295,16 @@ void geometricCtrl::armingCallback(const ros::TimerEvent& event){
   }
 }
   
-void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){    
+void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
   
   //double t2=clock();
   if (runAlg.compare("info")==0 && newDataFlag || tuneAtt || tuneRate){
-    if (!tuneAtt && !tuneRate){    
+    if (!tuneAtt && !tuneRate){
+      
+      if (avoidAgents && newDataFlag && simSetup){
+	updateCA_velpos();
+      }
+      
       if (quadMode.data==1){
 	holdPos_ = mavPos_;
 	holdPos_(2)=0.0;
