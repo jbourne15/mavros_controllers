@@ -1425,7 +1425,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 
 void geometricCtrl::mavstateCallback(const mavros_msgs::State::ConstPtr& msg){
   current_state_ = *msg;
-  if (current_state_.mode.compare("OFFBOARD")!=0 || !current_state_.armed){
+  if (!current_state_.armed){
     quadMode.data=1;
     std::fill(newVelData.begin(), newVelData.end(), false);
     std::fill(newPosData.begin(), newPosData.end(), false);
