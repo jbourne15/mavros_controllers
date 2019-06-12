@@ -355,20 +355,13 @@ void geometricCtrl::updateAgents(void) {
 	if (e_time[i].count() < 0.25){
 	  ktime=1;
 	}
-	else if(e_time[i].count()<1){
+	else if(e_time[i].count()<0.5){
 	  ktime = 4*e_time[i].count();
 	}
 	else{
-	  ktime = 5;
+	  ktime = 2;
 	}
-	// if ((e_time[i].count()/ctrs[i])<0.1){
-	//   ktime=1;
-	// }
-	// else{
-	//   ktime=(e_time[i].count()/ctrs[i])/0.1;
-	// }
       }
-
 
       quadHz.data.push_back(e_time[i].count());
       quadHz.data.push_back(ktime);      
@@ -984,7 +977,7 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
       ctrs[msg.agent_number-1]++;
     }
     else{
-      e_time[msg.agent_number-1] = std::chrono::system_clock::now()-startTimes[msg.agent_number-1];      
+      //e_time[msg.agent_number-1] = std::chrono::system_clock::now()-startTimes[msg.agent_number-1];      
       startTimes[msg.agent_number-1] = std::chrono::system_clock::now();
     }
         
