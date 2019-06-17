@@ -1235,6 +1235,12 @@ void geometricCtrl::gzmavposeCallback(const gazebo_msgs::ModelStates& msg){
 
 void geometricCtrl::armingCallback(const ros::TimerEvent& event){
   nh_.param<std::string>("/runAlg", runAlg, "lawnMower");
+
+  if (!current_state_.armed){ // reset integral error
+    errorSum_ << 0.0, 0.0, 0.0;
+    sumAtt << 0,0,0;
+  }
+
     
   if (newDataFlag && runAlg.compare("info")==0 && g_geodetic_converter.isInitialised() && !std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) && !std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) && newRefData || tuneAtt || tuneRate){
     if(!sim_enable_){
@@ -1260,10 +1266,10 @@ void geometricCtrl::armingCallback(const ros::TimerEvent& event){
       }
       else{
       // if i am not tuning then let client handle arming and offboard mode
-	if (!current_state_.armed){ // reset integral error
-	  errorSum_ << 0.0, 0.0, 0.0;
-	  sumAtt << 0,0,0;
-	}
+	//if (!current_state_.armed){ // reset integral error
+	//errorSum_ << 0.0, 0.0, 0.0;
+	//sumAtt << 0,0,0;
+	//}
       }
             
     }
