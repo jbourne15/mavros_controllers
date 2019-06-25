@@ -708,12 +708,14 @@ void geometricCtrl::wait4Home(void){
       ROS_INFO_THROTTLE(5,"[%d ctrl] tunePosVel checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), newPosData[AGENT_NUMBER-1], newVelData[AGENT_NUMBER-1], newRefData, (runAlg.compare("info")==0));
     }
     else{
-      // ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData, (runAlg.compare("info")!=0));
-      ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d, newSourceData=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData, (runAlg.compare("info")!=0), !newSourceData);	
+
+      //ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d, newSourceData=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData, (runAlg.compare("info")!=0), !newSourceData);
+
+      ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData[agent]=%d, newVelData[agent]=%d, newRefData=%d, runAlg=%d, newSourceData=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), newPosData[AGENT_NUMBER-1], newVelData[AGENT_NUMBER-1], !newRefData, (runAlg.compare("info")!=0), !newSourceData);
+      
     }
     
-  } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData || (runAlg.compare("info")!=0) || !(newSourceData || tunePosVel) ) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
-  // } while ((!g_geodetic_converter.isInitialised() || std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}) || std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}) || !newRefData || (runAlg.compare("info")!=0)) && ros::ok()); // wait until i have home and i have recied pos, vel data from all agents.
+  } while ((!g_geodetic_converter.isInitialised() || !newPosData[AGENT_NUMBER-1] || !newVelData[AGENT_NUMBER-1] || !newRefData || (runAlg.compare("info")!=0) || !(newSourceData || tunePosVel) ) && ros::ok()); // wait until i have home and i have recied local pos, vel data.
 
   newDataFlag=true;
 }
