@@ -44,6 +44,8 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   newSourceData=false;
   q_des<< -0.7071068,0,0,-0.7071068;
   holdPos_<<0,0,0;
+  mavVel_<<0,0,0;
+  mavPos_<<0,0,0;
 
   nh_.getParam("geometric_controller/kp", kp);
   Kpos_<<kp[0],kp[1],kp[2];
@@ -127,15 +129,18 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<int>("trajectory_publisher/trajectoryID", target_trajectoryID_, -1);
   if (target_trajectoryID_==4){
     obstaclesOn=true;
-    ROS_INFO("[GEO] trajId=4, avoiding static obstacles!!!");
+    ROS_INFO("[ctrl] trajId=4, avoiding static obstacles!!!");
   }
 
-  nh_.param<bool>("/useKalman", useKalman, true);
+  useKalman=false;
+  nh_.param<bool>("/useKalman", useKalman, false);
 
   ctrs.resize(numAgents);  
   startTimes.resize(numAgents);
   e_time.resize(numAgents);
   std::fill(ctrs.begin(), ctrs.end(), 0);
+  
+  //std::fill(e_time.begin(), e_time.end(), std::chrono::system_clock::now());  
   
   if (useKalman){
 
@@ -704,18 +709,10 @@ void geometricCtrl::wait4Home(void){
     if (tunePosVel && newVelData[AGENT_NUMBER-1] && newPosData[AGENT_NUMBER-1] && newRefData && g_geodetic_converter.isInitialised() && runAlg.compare("info")==0){
       break;
     }
-    else if (tunePosVel){
-      ROS_INFO_THROTTLE(5,"[%d ctrl] tunePosVel checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), newPosData[AGENT_NUMBER-1], newVelData[AGENT_NUMBER-1], newRefData, (runAlg.compare("info")==0));
-    }
-    else{
 
-      //ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData=%d, newVelData=%d, newRefData=%d, runAlg=%d, newSourceData=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), std::any_of(newPosData.begin(),newPosData.end(), [](bool v) {return !v;}), std::any_of(newVelData.begin(),newVelData.end(), [](bool v) {return !v;}), !newRefData, (runAlg.compare("info")!=0), !newSourceData);
-
-      ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%d, newPosData[agent]=%d, newVelData[agent]=%d, newRefData=%d, runAlg=%d, newSourceData=%d", AGENT_NUMBER, !g_geodetic_converter.isInitialised(), newPosData[AGENT_NUMBER-1], newVelData[AGENT_NUMBER-1], !newRefData, (runAlg.compare("info")!=0), !newSourceData);
-      
-    }
+    ROS_INFO_THROTTLE(5,"[%d ctrl] checks: geodetic_init=%s, newPosData[agent]=%s, newVelData[agent]=%s, newRefData=%s, runAlg is info=%s, newSourceData=%s", AGENT_NUMBER, g_geodetic_converter.isInitialised() ? "true" : "false", newPosData[AGENT_NUMBER-1] ? "true" : "false", newVelData[AGENT_NUMBER-1] ? "true" : "false", newRefData ? "true" : "false", runAlg=="info" ? "true" : "false" , newSourceData ? "true" : "false");
     
-  } while ((!g_geodetic_converter.isInitialised() || !newPosData[AGENT_NUMBER-1] || !newVelData[AGENT_NUMBER-1] || !newRefData || (runAlg.compare("info")!=0) || !(newSourceData || tunePosVel) ) && ros::ok()); // wait until i have home and i have recied local pos, vel data.
+  } while ((!g_geodetic_converter.isInitialised() || !newPosData[AGENT_NUMBER-1] || !newVelData[AGENT_NUMBER-1] || (runAlg.compare("info")!=0) || !(newSourceData || tunePosVel) ) && ros::ok()); // wait until i have home and i have recied local pos, vel data.
 
   newDataFlag=true;
 }
@@ -778,7 +775,7 @@ void geometricCtrl::setupScenario(void) {
     
     obstacles.push_back(obstacle);
     // obstacle.clear();
-    ROS_INFO("[geo] placing obstacle over x=%f, y=%f", xs, ys);
+    ROS_INFO("[ctrl] placing obstacle over x=%f, y=%f", xs, ys);
   }
 
   if (target_trajectoryID_==4){
@@ -927,7 +924,7 @@ void geometricCtrl::setupScenario(void) {
       sim->addObstacle(obstacles[i]);
     }
 
-    ROS_INFO("[geo] processing %f obstacles", obstacles.size());
+    ROS_INFO("[ctrl] processing %f obstacles", obstacles.size());
     sim->processObstacles();
   }
 
@@ -1020,7 +1017,7 @@ void geometricCtrl::sourceCallback(const enif_iuc::AgentSource &msg){
   if(g_geodetic_converter.isInitialised()){
     g_geodetic_converter.geodetic2Enu(msg.source.latitude, msg.source.longitude, H_altitude, &xs, &ys, &zs);
     // if different then setupScenario:
-    ROS_INFO("[geo] got source data: (%f,%f,%f)", xs, ys, zs);    
+    ROS_INFO("[ctrl] got source data: (%f,%f,%f)", xs, ys, zs);    
     newSourceData = true;
     simSetup=false;
     setupScenario();
@@ -1394,7 +1391,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	des_attRefPub_.publish(qdes);
 	cur_attRefPub_.publish(qcur);
 	
-	if (((targetPos_noCA-mavPos_).norm() < 0.5 && targetPos_noCA(2)>0.75 && mavVel_.norm()<.5) && mavPos_(2)>0.75 && holdPos_(2)==1.0 && std::all_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;}) && std::all_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;})){
+	if (newRefData && ((targetPos_noCA-mavPos_).norm() < 0.5 && targetPos_noCA(2)>0.75 && mavVel_.norm()<.5) && mavPos_(2)>0.75 && holdPos_(2)==1.0 && std::all_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;}) && std::all_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;})){
 	  if(target_trajectoryID_==0){
 	    quadMode.data=2; //stay in hold mode
 	  }
@@ -1403,7 +1400,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	  }
 	}
 	else{
-	  ROS_INFO_THROTTLE(.5,"quadMode= %d, waiting until quad is still: targetPos_noCA-mavPos_=%f, mavVel=%f, mavPos_(2)=%f, newPos=%d, newVel=%d", quadMode.data, (targetPos_noCA-mavPos_).norm(), mavVel_.norm(), mavPos_(2), std::all_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;}), std::all_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;}));
+	  ROS_INFO_THROTTLE(1, "[ctrl] HOLDING POS quadMode checks: quadMode= %d, (targetPos_noCA-mavPos_)<0.5=%s, mavVel.norm()<0.5=%s, mavPos_(2)>0.75=%s, newPos=%s, newVel=%s, newRefData=%s", quadMode.data, (targetPos_noCA-mavPos_).norm()>0.75 ? "true":"false", mavVel_.norm()<0.5? "true":"false", mavPos_(2)>0.75? "true":"false", std::all_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;})? "true" : "false", std::all_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;})? "true" : "false", newRefData? "true" : "false");
 	}
       }
       else if(quadMode.data==3){
@@ -1428,8 +1425,8 @@ void geometricCtrl::mavstateCallback(const mavros_msgs::State::ConstPtr& msg){
   current_state_ = *msg;
   if (!current_state_.armed){
     quadMode.data=1;
-    std::fill(newVelData.begin(), newVelData.end(), false);
-    std::fill(newPosData.begin(), newPosData.end(), false);
+    //std::fill(newVelData.begin(), newVelData.end(), false);
+    //std::fill(newPosData.begin(), newPosData.end(), false);
     std::fill(ctrs.begin(), ctrs.end(), 0);
   }  
 }
