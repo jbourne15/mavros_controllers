@@ -1,12 +1,13 @@
 attctrl_tau_p: [.3, .3, .5]
-attctrl_tau_i: [25, 25, 100]
+attctrl_tau_i: [35, 35, 1000]
 attctrl_tau_d: [1000000, 1000000, 1000000] #unused
-kp: [-2, -2, -6]
-kv: [-1, -1, -6]
-ki: [-0, -0, -0.001]
+kp: [-1, -1, -0.65]
+kv: [-1, -1, -0.35]
+ki: [-0.001, -0.001, -0.003]
 max_tau_i: 5.0
 max_fb_acc_: 5.0
-norm_thrust_const_: 0.06
+max_fb_jerk_: 0.075 # (without time)
+norm_thrust_const_: 0.04 # hover thrust 0.4
 obstaclesOn: false
 radius: 2.5
 max_rollRate: 2.5

@@ -118,7 +118,7 @@ class geometricCtrl
     /* double attctrl_tau_; */
     //Eigen::Vector3d attctrl_tau_;
     double norm_thrust_const_;
-    double max_fb_acc_, max_rollRate, max_pitchRate, max_yawRate, max_rollPitch, takeOffThrust, max_tau_i;
+    double max_fb_acc_, max_fb_jerk_, max_rollRate, max_pitchRate, max_yawRate, max_rollPitch, takeOffThrust, max_tau_i;
     float radius, timeH;
     mavros_msgs::SetMavFrame mav_frame;
     std::vector<bool> newPosData, newVelData;
@@ -172,7 +172,7 @@ class geometricCtrl
     Eigen::Vector3d goalPos_, targetPos_, targetVel_, targetAcc_, targetJerk_, targetSnap_, targetPos_prev_, targetVel_prev_, targetCA_vel, targetCA_pos, targetPos_noCA, targetVel_noCA, targetAcc_noCA, targetPos_noCA_prev_, targetVel_noCA_prev_;
     Eigen::Vector3d mavPos_, mavVel_, mavRate_, holdPos_;
     double mavYaw_, xyAccelMax;
-    Eigen::Vector3d a_des, a_fb, a_ref, a_rd, g_, a_des_filtered, action_int_;
+    Eigen::Vector3d a_des, a_fb,a_fb_prev, a_ref, a_rd, g_, a_des_filtered, action_int_;
     std::vector<Eigen::Vector3d> a_des_history;
     int ades_idx;
         

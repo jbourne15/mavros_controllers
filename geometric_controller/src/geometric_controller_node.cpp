@@ -77,6 +77,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<double>("geometric_controller/max_tau_i", max_tau_i, 0.5);
   nh_.param<double>("geometric_controller/norm_thrust_const_", norm_thrust_const_, 0.1);
   nh_.param<double>("geometric_controller/max_fb_acc_", max_fb_acc_, 5.0);
+  nh_.param<double>("geometric_controller/max_fb_jerk_", max_fb_jerk_, 0.075);
   nh_.param<double>("geometric_controller/max_rollRate", max_rollRate, 10);
   nh_.param<double>("geometric_controller/max_pitchRate", max_pitchRate, 10);
   nh_.param<double>("geometric_controller/max_yawRate", max_yawRate, 10);
@@ -1333,7 +1334,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	/// Compute BodyRate commands using differential flatness
 	/// Controller based on Faessler 2017
 	a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_ + action_int_; //feedforward term for trajectory error
-	// if(a_fb(2) < -max_fb_acc_) a_fb(2) = -max_fb_acc_;
+
 	if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;
 	
 	a_des = a_fb - g_;
@@ -1593,6 +1594,8 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     //R_ref = quat2RotMatrix(q_ref);
     a_fb = Kpos_.asDiagonal() * errorPos_ + Kvel_.asDiagonal() * errorVel_ + action_int_; //feedforward term for trajectory error
 
+    
+
 
     Eigen::Vector3d controlA_p = Kpos_.asDiagonal() * errorPos_;
     Eigen::Vector3d controlA_v = Kvel_.asDiagonal() * errorVel_;
@@ -1614,21 +1617,31 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     controlActionInt.twist.linear.z = controlA_i(2);
 	
     controlActionPub_.publish(controlAction);
-    controlActionIntPub_.publish(controlActionInt);
-
-    
+    controlActionIntPub_.publish(controlActionInt);      
     
     if(a_fb.norm() > max_fb_acc_) a_fb = (max_fb_acc_ / a_fb.norm()) * a_fb;    
+           
     
     //a_rd = R_ref * D_.asDiagonal() * R_ref.transpose() * targetVel_; //Rotor drag
     // a_des = a_fb + a_ref - a_rd - g_;
-    a_des = a_fb + a_ref - g_;    
+    a_des = a_fb + a_ref - g_;
 
     if (Eigen::Vector2d(a_des(0),a_des(1)).norm()>xyAccelMax){
       Eigen::Vector2d new_a_des = xyAccelMax/Eigen::Vector2d(a_des(0),a_des(1)).norm() * Eigen::Vector2d(a_des(0),a_des(1));
       a_des(0) = new_a_des(0);
       a_des(1) = new_a_des(1);
     }
+
+        
+    if((a_fb(2)-a_fb_prev(2))  >  max_fb_jerk_)
+      {
+	a_fb(2) = a_fb_prev(2)+max_fb_jerk_;
+      }
+    else if ((a_fb(2)-a_fb_prev(2))  <  -max_fb_jerk_)
+      {
+	a_fb(2) = a_fb_prev(2)-max_fb_jerk_;
+      }
+    
 
     // if(a_des(0) > xyAccelMax ) a_des(0) = xyAccelMax;
     // if(a_des(0) < -xyAccelMax) a_des(0) = -xyAccelMax;
@@ -1657,7 +1670,6 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     q_des = acc2quaternion(a_des, mavYaw_);
 
 
-
     // q_des(0)=q_des(0)+Gsampler(generator);
     // q_des(1)=q_des(1)+Gsampler(generator);
     // q_des(2)=q_des(2)+Gsampler(generator);
@@ -1667,6 +1679,8 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
     
     cmdBodyRate_(3)=std::max(0.0, std::min(1.0, a_fb(2))); //Calculate thrust;
+
+    a_fb_prev=a_fb;
 
     // ev_idx++;    
     // if (ev_idx>errorVel_history.size()) ev_idx=0;    
