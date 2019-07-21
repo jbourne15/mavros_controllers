@@ -205,14 +205,12 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
    xt.set_size(numAgents,3); // xyz  
    set_all_elements(xt,0);
-
-   if (tunePosVel){
-     for(int i=0;i<numAgents; i++){
-       if(i!=(AGENT_NUMBER-1)){
-	 xt(i,0)= 1000;
-	 xt(i,1)= 1000;
-	 xt(i,2)= 1000;
-       }
+   
+   for(int i=0;i<numAgents; i++){
+     if(i!=(AGENT_NUMBER-1)){
+       xt(i,0)= 1000;
+       xt(i,1)= 1000;
+       xt(i,2)= 1000;
      }
    }
 
