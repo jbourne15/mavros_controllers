@@ -46,6 +46,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   holdPos_<<0,0,0;
   mavVel_<<0,0,0;
   mavPos_<<0,0,0;
+  holdYaw_=0;
 
   nh_.getParam("geometric_controller/kp", kp);
   Kpos_<<kp[0],kp[1],kp[2];
@@ -1305,6 +1306,11 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
       if (quadMode.data==1){
 	holdPos_ = mavPos_;
 	holdPos_(2)=0.0;
+
+	tf::Quaternion qc(mavAtt_(1), mavAtt_(2), mavAtt_(3), mavAtt_(0));      
+	tf::Matrix3x3 mc(qc);
+	double rollC, pitchC;
+	mc.getRPY(rollC, pitchC, holdYaw_);
 	
 	if((current_state_.armed || current_state_.mode.compare("OFFBOARD")==0) && runAlg.compare("info")==0){
 	  quadMode.data=2;
@@ -1368,9 +1374,8 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	//if(ades_idx>a_des_history.size()) ades_idx=0;
     
     
-	q_des = acc2quaternion(a_des, mavYaw_);
+	q_des = acc2quaternion(a_des, holdYaw_);
 	cmdBodyRate_ = attcontroller(q_des, a_des, mavAtt_); //Calculate BodyRate
-	cmdBodyRate_(2)=0;
 
 	cmdBodyRate_(3)=std::max(0.0, std::min(1.0, a_fb(2))); //Calculate thrust;
 
@@ -1665,7 +1670,7 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
 
     
     
-    q_des = acc2quaternion(a_des, mavYaw_);
+    q_des = acc2quaternion(a_des, holdYaw_);
 
 
     // q_des(0)=q_des(0)+Gsampler(generator);

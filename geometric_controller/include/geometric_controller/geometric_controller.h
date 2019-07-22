@@ -171,7 +171,7 @@ class geometricCtrl
     
     Eigen::Vector3d goalPos_, targetPos_, targetVel_, targetAcc_, targetJerk_, targetSnap_, targetPos_prev_, targetVel_prev_, targetCA_vel, targetCA_pos, targetPos_noCA, targetVel_noCA, targetAcc_noCA, targetPos_noCA_prev_, targetVel_noCA_prev_;
     Eigen::Vector3d mavPos_, mavVel_, mavRate_, holdPos_;
-    double mavYaw_, xyAccelMax;
+    double mavYaw_, xyAccelMax, holdYaw_;
     Eigen::Vector3d a_des, a_fb,a_fb_prev, a_ref, a_rd, g_, a_des_filtered, action_int_;
     std::vector<Eigen::Vector3d> a_des_history;
     int ades_idx;
