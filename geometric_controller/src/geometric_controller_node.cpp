@@ -20,7 +20,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   nh_.param<int>("geometric_controller/agent_number", AGENT_NUMBER, 1);
   nh_.param<bool>("geometric_controller/tunePosVel", tunePosVel, false);
   nh_.param<int>("trajectory_publisher/trajectoryID", target_trajectoryID_, -1);
-  nh_.param<double>("geometric_controller/sourceObjSize", sourceObjSize, 2);
+  nh_.param<double>("geometric_controller/sourceObjSize", sourceObjSize, 1);
   nh_.param<double>("geometric_controller/gainCA", gainCA, 2.25);
 
   std::cout<<"gainCA "<<gainCA<<std::endl;
@@ -304,13 +304,13 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
    wait4Home(); // ensures I have gotten positions from other agents at least
 
-   if (!tuneRate && !tuneAtt){
+   if (!tuneRate && !tuneAtt && simSetup==false){
      setupScenario();
    }
    targetPos_ << xt(AGENT_NUMBER-1,0), xt(AGENT_NUMBER-1,1), 1;
  }
 geometricCtrl::~geometricCtrl() {
-   delete sim;
+  delete sim;
    //Destructor
  }
 
@@ -662,6 +662,9 @@ double geometricCtrl::b_sigMoid(double x, double c, double a){
 
 
 void geometricCtrl::checkDataCallback(const ros::TimerEvent& event){
+  if (obstaclesOn){
+    obstaclesPub_.publish(obstacleMsg);
+  }
   
   std::vector<double> kp, kv, ki;
   nh_.getParam("geometric_controller/kp", kp);
@@ -744,7 +747,7 @@ void geometricCtrl::updateGoal(void){
 
 void geometricCtrl::setupScenario(void) {
   //wait4Home ensures I have necessary variables set.
-  sim = new RVO::RVOSimulator();
+  sim = new RVO::RVOSimulator();  
   
   sim->setTimeStep(.01f); 
   
@@ -789,7 +792,7 @@ void geometricCtrl::setupScenario(void) {
     obstacle.push_back(RVO::Vector2(x,y+sourceObjSize/2.0));
     obstacle.push_back(RVO::Vector2(x-sourceObjSize/2.0, y-sourceObjSize/2.0));
     obstacle.push_back(RVO::Vector2(x+sourceObjSize/2.0, y-sourceObjSize/2.0));
-    
+      
     obstacles.push_back(obstacle);
     obstacle.clear();
   }
@@ -864,8 +867,7 @@ void geometricCtrl::setupScenario(void) {
     
     obstacles.push_back(obstacle);
   }
-  
-  visualization_msgs::Marker obstacleMsg;
+
   obstacleMsg.header.frame_id = "/world";
   obstacleMsg.header.stamp = ros::Time::now();
   obstacleMsg.ns = "obstacles";
@@ -887,7 +889,9 @@ void geometricCtrl::setupScenario(void) {
   clr.b = 0;
   clr.a = 1.0;
   
-
+  obstacleMsg.points.clear();
+  obstacleMsg.colors.clear();
+  
   for (int j=0; j<obstacles.size(); j++){
     for (int i=0; i<obstacles[j].size(); i++){
       geometry_msgs::Point p;
@@ -916,8 +920,9 @@ void geometricCtrl::setupScenario(void) {
     }
   }
 
-
-  if (obstaclesOn){
+ 
+  if (obstaclesOn){    
+    
     obstaclesPub_.publish(obstacleMsg);
     
     for (int i=0; i<obstacles.size(); i++){
@@ -1015,12 +1020,18 @@ void geometricCtrl::agentsCallback(const enif_iuc::AgentMPS &msg){ // slow rate
 void geometricCtrl::sourceCallback(const enif_iuc::AgentSource &msg){
   // receive source location from enif_iuc_quad
   if(g_geodetic_converter.isInitialised()){
-    g_geodetic_converter.geodetic2Enu(msg.source.latitude, msg.source.longitude, H_altitude, &xs, &ys, &zs);
-    // if different then setupScenario:
-    ROS_INFO("[ctrl] got source data: (%f,%f,%f)", xs, ys, zs);    
-    newSourceData = true;
-    simSetup=false;
-    setupScenario();
+    double xs_n,ys_n,zs_n;
+    g_geodetic_converter.geodetic2Enu(msg.source.latitude, msg.source.longitude, H_altitude, &xs_n, &ys_n, &zs_n);
+
+    if (xs_n!=xs || ys_n!=ys || zs_n!=zs || newSourceData==false){
+      xs=xs_n;
+      ys=ys_n;
+      zs=zs_n;
+      ROS_INFO("[ctrl] got source data: (%f,%f,%f)", xs, ys, zs);    
+      newSourceData = true;
+      simSetup=false;
+      setupScenario();
+    }
   }
 }
 
@@ -1404,7 +1415,7 @@ void geometricCtrl::cmdloopCallback(const ros::TimerEvent& event){
 	  }
 	}
 	else{
-	  ROS_INFO_THROTTLE(1, "[ctrl] HOLDING POS quadMode checks: quadMode= %d, (targetPos_noCA-mavPos_)<0.5=%s, mavVel.norm()<0.5=%s, mavPos_(2)>0.75=%s, newPos=%s, newVel=%s, newRefData=%s", quadMode.data, (targetPos_noCA-mavPos_).norm()>0.75 ? "true":"false", mavVel_.norm()<0.5? "true":"false", mavPos_(2)>0.75? "true":"false", std::all_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;})? "true" : "false", std::all_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;})? "true" : "false", newRefData? "true" : "false");
+	  ROS_INFO_THROTTLE(1, "[ctrl] HOLDING POS quadMode checks: quadMode= %d, (targetPos_noCA-mavPos_)<0.5=%s, mavVel.norm()<0.5=%s, mavPos_(2)>0.75=%s, newPos=%s, newVel=%s, newRefData=%s", quadMode.data, (targetPos_noCA-mavPos_).norm()<0.5 ? "true":"false", mavVel_.norm()<0.5? "true":"false", mavPos_(2)>0.75? "true":"false", std::all_of(newPosData.begin(),newPosData.end(), [](bool v) {return v;})? "true" : "false", std::all_of(newVelData.begin(),newVelData.end(), [](bool v) {return v;})? "true" : "false", newRefData? "true" : "false");
 	}
       }
       else if(quadMode.data==3){

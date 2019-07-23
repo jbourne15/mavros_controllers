@@ -185,6 +185,7 @@ class geometricCtrl
     RVO::Vector2 desVel;
 
     RVO::RVOSimulator* sim;
+    visualization_msgs::Marker obstacleMsg;
 
     void pubMotorCommands();
     void pubRateCommands();
