@@ -254,9 +254,11 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
 
    ctrltriggerServ_ = nh_.advertiseService(agentName+"/tigger_rlcontroller", &geometricCtrl::ctrltriggerCallback, this);
    cmdloop_timer_    = nh_.createTimer(ros::Duration(0.01), &geometricCtrl::cmdloopCallback, this); 
-   statusloop_timer_ = nh_.createTimer(ros::Duration(1), &geometricCtrl::statusloopCallback, this); 
-   arming_timer_     = nh_.createTimer(ros::Duration(.2), &geometricCtrl::armingCallback, this);    
-   checkData_timer_  = nh_.createTimer(ros::Duration(5), &geometricCtrl::checkDataCallback, this);
+   statusloop_timer_ = nh_.createTimer(ros::Duration(5), &geometricCtrl::statusloopCallback, this); 
+   arming_timer_     = nh_.createTimer(ros::Duration(.2), &geometricCtrl::armingCallback, this);   
+   //if (tunePosVel){
+     //checkData_timer_  = nh_.createTimer(ros::Duration(10), &geometricCtrl::checkDataCallback, this);
+   //}
 
    quadModePub_ = nh_.advertise<std_msgs::Int16>(agentName+"/quadMode", 1);
    hzPub_ = nh_.advertise<std_msgs::Float64MultiArray>(agentName+"/otherQuadHz", 1);
@@ -1286,7 +1288,7 @@ void geometricCtrl::gzmavposeCallback(const gazebo_msgs::ModelStates& msg){
 
 
 void geometricCtrl::armingCallback(const ros::TimerEvent& event){
-  nh_.param<std::string>("/runAlg", runAlg, "lawnMower");
+  //nh_.param<std::string>("/runAlg", runAlg, "lawnMower");
 
   if (!current_state_.armed){ // reset integral error
     errorSum_ << 0.0, 0.0, 0.0;
@@ -1489,7 +1491,20 @@ void geometricCtrl::mavstateCallback(const mavros_msgs::State::ConstPtr& msg){
   }  
 }
 
-void geometricCtrl::statusloopCallback(const ros::TimerEvent& event){  
+void geometricCtrl::statusloopCallback(const ros::TimerEvent& event){
+
+  //auto s1 = std::chrono::system_clock::now();
+  
+  if (obstaclesOn){
+    obstaclesPub_.publish(obstacleMsg);
+  }
+
+  nh_.getParam("/runAlg", runAlg);   
+
+  //auto e1 = std::chrono::system_clock::now();
+  //std::chrono::duration<double> elapsed_seconds=e1-s1;
+
+  //std::cout<<"status time: "<<elapsed_seconds.count()<<std::endl;
 }
 
 void geometricCtrl::pubReferencePose(){
