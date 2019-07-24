@@ -464,16 +464,21 @@ void geometricCtrl::updateCA_velpos(void){
 
   if (newSourceData){
     Eigen::Vector2d obj2Quad((targetPos_CA(0)-xs), (targetPos_CA(1)-ys));
-    if (obj2Quad.norm()<(radius*1.25)){
+    if (obj2Quad.norm()<(radius)){
       double angle2Quad = std::atan2(obj2Quad(1), obj2Quad(0));
 
-      targetPos_CA(0) = xs+obj2Quad.norm()*std::cos(angle2Quad);
-      targetPos_CA(1) = ys+obj2Quad.norm()*std::sin(angle2Quad);
-      //ROS_WARN_THROTTLE(1,"Q%d adjusting targetPos_noCA from obstacle after CA update", AGENT_NUMBER);
+      targetPos_CA(0) = xs+radius*std::cos(angle2Quad);
+      targetPos_CA(1) = ys+radius*std::sin(angle2Quad);
+
+      if (Eigen::Vector2d(targetPos_CA(0)-xs, targetPos_CA(1)-ys).norm()<(radius)){
+	ROS_ERROR("still too close in CA update ori: %f, update: %f", obj2Quad.norm(), Eigen::Vector2d(targetPos_CA(0)-xs, targetPos_CA(1)-ys).norm());
+      }
+      
+      ROS_WARN_THROTTLE(1,"Q%d adjusting targetPos_noCA from obstacle after CA update", AGENT_NUMBER);
     }
     
     Eigen::Vector2d obj2QuadPos((mavPos_(0)-xs), (mavPos_(1)-ys));
-    if (obj2QuadPos.norm()<(radius*1.25)){
+    if (obj2QuadPos.norm()<(radius)){
       ROS_ERROR_THROTTLE(1,"Q%d TOO CLOSE TO OBJ, disp: %f", AGENT_NUMBER, obj2QuadPos.norm());
     }
   }
@@ -754,16 +759,23 @@ void geometricCtrl::updateGoal(void){
       // 	// here!
       // 	targetPos_noCA=holdPos_;
       // }
+      /*
       if(newSourceData){
 	Eigen::Vector2d obj2Quad((targetPos_noCA(0)-xs), (targetPos_noCA(1)-ys));
-	if (obj2Quad.norm()<(radius*1.25)){
+	if (obj2Quad.norm()<(radius)){
 	  double angle2Quad = std::atan2(obj2Quad(1), obj2Quad(0));
 
 	  targetPos_noCA(0) = xs+obj2Quad.norm()*std::cos(angle2Quad);
 	  targetPos_noCA(1) = ys+obj2Quad.norm()*std::sin(angle2Quad);
-	  //ROS_WARN_THROTTLE(1,"Q%d adjusting targetPos_noCA from obstacle in goal", AGENT_NUMBER);
+
+	  if (Eigen::Vector2d(targetPos_noCA(0)-xs, targetPos_noCA(1)-ys).norm()<(radius)){
+	    ROS_ERROR("still too close in goal %f", Eigen::Vector2d(targetPos_noCA(0)-xs, targetPos_noCA(1)-ys).norm());
+	  }
+	  
+	  ROS_WARN_THROTTLE(1,"Q%d adjusting targetPos_noCA from obstacle in goal", AGENT_NUMBER);
 	}
       }
+      */
       
       goals.push_back(RVO::Vector2(targetPos_noCA(0),targetPos_noCA(1)));
     }
@@ -1617,39 +1629,42 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
     Eigen::Vector3d errorPos_, errorVel_, errorPos_noCA, errorVel_filtered;
     Eigen::Matrix3d R_ref;
 
+    
     if(newSourceData){
       Eigen::Vector2d obj2QuadPos((mavPos_(0)-xs), (mavPos_(1)-ys));      
 
-      if (obj2QuadPos.norm()<(radius*1.25)){
+      if (obj2QuadPos.norm()<(radius)){
 	double angle2Quad = std::atan2(obj2QuadPos(1), obj2QuadPos(0));
+
 	
-	Eigen::Vector3d obj2QuadPosPerp(-obj2QuadPos(1)/(obj2QuadPos.norm()), obj2QuadPos(0)/(obj2QuadPos.norm()), targetVel_(2));
+	Eigen::Vector2d obj2QuadPosPerp(-obj2QuadPos(1)/(obj2QuadPos.norm()), obj2QuadPos(0)/(obj2QuadPos.norm()));
 
 	double targetVel_z=targetVel_(2);
 	
-	if ((targetVel_+obj2QuadPosPerp).norm()>(targetVel_-obj2QuadPosPerp).norm()){
-	  obj2QuadPosPerp(2)=1;
+	if ((Eigen::Vector2d(targetVel_(0),targetVel_(1))+obj2QuadPosPerp).norm()>(Eigen::Vector2d(targetVel_(0),targetVel_(1))-obj2QuadPosPerp).norm()){
+	  //obj2QuadPosPerp(2)=1;
 	  //targetVel_ = targetVel_.dot(-obj2QuadPosPerp)*-obj2QuadPosPerp;
 
-	  targetVel_(0) = targetVel_(0)+obj2QuadPos.norm()/(radius*1.25)*std::cos(angle2Quad) - obj2QuadPosPerp(0);
-	  targetVel_(1) = targetVel_(1)+obj2QuadPos.norm()/(radius*1.25)*std::sin(angle2Quad) - obj2QuadPosPerp(1);
+	  targetVel_(0) = targetVel_(0)+obj2QuadPos.norm()/(radius)*std::cos(angle2Quad) - obj2QuadPosPerp(0);
+	  targetVel_(1) = targetVel_(1)+obj2QuadPos.norm()/(radius)*std::sin(angle2Quad) - obj2QuadPosPerp(1);
 	
 	  //targetVel_(2)=targetVel_z;
 	}
 	else{
-	  obj2QuadPosPerp(2)=1;
+	  //obj2QuadPosPerp(2)=1;
 	  //targetVel_ = targetVel_.dot(obj2QuadPosPerp)*obj2QuadPosPerp;
 	  
-	  targetVel_(0) = targetVel_(0)+obj2QuadPos.norm()/(radius*2.00)*std::cos(angle2Quad) + obj2QuadPosPerp(0);
-	  targetVel_(1) = targetVel_(1)+obj2QuadPos.norm()/(radius*2.00)*std::sin(angle2Quad) + obj2QuadPosPerp(1);
+	  targetVel_(0) = targetVel_(0)+obj2QuadPos.norm()/(radius)*std::cos(angle2Quad) + obj2QuadPosPerp(0);
+	  targetVel_(1) = targetVel_(1)+obj2QuadPos.norm()/(radius)*std::sin(angle2Quad) + obj2QuadPosPerp(1);
 	  
 	  //targetVel_(2)=targetVel_z;
 	}
 
 		
-	targetPos_(0) = xs+obj2QuadPos.norm()*std::cos(angle2Quad);
-	targetPos_(1) = ys+obj2QuadPos.norm()*std::sin(angle2Quad);
-	//ROS_WARN_THROTTLE(1,"Q%d adjusting targetPos_ from obstacle in control", AGENT_NUMBER);
+	targetPos_(0) = xs+radius*std::cos(angle2Quad);
+	targetPos_(1) = ys+radius*std::sin(angle2Quad);       
+	
+	ROS_WARN_THROTTLE(1,"Q%d adjusting targetPos_ from obstacle in control", AGENT_NUMBER);
       }
     }
 
@@ -1713,7 +1728,7 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
       a_des(1) = new_a_des(1);
     }
 
-        
+    /*        
     if((a_fb(2)-a_fb_prev(2))  >  max_fb_jerk_)
       {
 	a_fb(2) = a_fb_prev(2)+max_fb_jerk_;
@@ -1722,6 +1737,7 @@ void geometricCtrl::computeBodyRateCmd(bool ctrl_mode){
       {
 	a_fb(2) = a_fb_prev(2)-max_fb_jerk_;
       }
+    */
     
 
     // if(a_des(0) > xyAccelMax ) a_des(0) = xyAccelMax;
