@@ -573,12 +573,12 @@ void geometricCtrl::updateCA_velpos(void){
 	// }
 	// else{
 	  otherAgentMarker.color.r = 0.0;
-	  otherAgentMarker.color.g = 1.0;
+	  otherAgentMarker.color.g = 0.0;
 	  otherAgentMarker.color.b = 0.0;
 	// }
 
 	otherVelMarker.color.r = 0.0;
-	otherVelMarker.color.g = 1.0;
+	otherVelMarker.color.g = 0.0;
 	otherVelMarker.color.b = 0.0;
 
       }
@@ -611,27 +611,16 @@ void geometricCtrl::updateCA_velpos(void){
 	// }
 	// else{
 	  otherAgentMarker.color.r = 1.0;
-	  otherAgentMarker.color.g = 0.0;
+	  otherAgentMarker.color.g = 1.0;
 	  otherAgentMarker.color.b = 1.0;
 	// }
 
 	otherVelMarker.color.r = 1.0;
-	otherVelMarker.color.g = 0.0;
+	otherVelMarker.color.g = 1.0;
 	otherVelMarker.color.b = 1.0;
 
       }
     else if (AGENT_NUMBER == 4)
-      {
-	  otherAgentMarker.color.r = 0.0;
-	  otherAgentMarker.color.g = 1.0;
-	  otherAgentMarker.color.b = 1.0;
-	  
-	  otherVelMarker.color.r = 0.0;
-	  otherVelMarker.color.g = 1.0;
-	  otherVelMarker.color.b = 1.0;
-
-      }
-    else if (AGENT_NUMBER == 5)
       {
 	  otherAgentMarker.color.r = 1.0;
 	  otherAgentMarker.color.g = 0.5;
@@ -640,6 +629,17 @@ void geometricCtrl::updateCA_velpos(void){
 	  otherVelMarker.color.r = 1.0;
 	  otherVelMarker.color.g = 0.5;
 	  otherVelMarker.color.b = 0.0;
+
+      }
+    else if (AGENT_NUMBER == 5)
+      {
+	  otherAgentMarker.color.r = 0.5;
+	  otherAgentMarker.color.g = 0.0;
+	  otherAgentMarker.color.b = 1.0;
+	  
+	  otherVelMarker.color.r = 0.5;
+	  otherVelMarker.color.g = 0.0;
+	  otherVelMarker.color.b = 1.0;
 
       }
     else{

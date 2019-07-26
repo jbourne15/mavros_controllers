@@ -341,7 +341,7 @@ void trajectoryPublisher::getPolyTrajectory(void){
     std_msgs::ColorRGBA trajColor;
     if (AGENT_NUMBER == 1)
       {	    
-	trajColor = mav_visualization::Color::Green();
+	trajColor = mav_visualization::Color::Black();
       }
     else if (AGENT_NUMBER == 2)
       {
@@ -349,15 +349,15 @@ void trajectoryPublisher::getPolyTrajectory(void){
       }
     else if (AGENT_NUMBER == 3)
       {
-	trajColor = mav_visualization::Color::Pink();
+	trajColor = mav_visualization::Color::White();
       }
     else if (AGENT_NUMBER == 4)
       {
-	trajColor = mav_visualization::Color::Teal();
+	trajColor = mav_visualization::Color::Orange();
       }
     else if (AGENT_NUMBER == 5)
       {
-	trajColor = mav_visualization::Color::Orange();
+	trajColor = mav_visualization::Color::Purple();
       }
     else{
       trajColor = mav_visualization::Color::Yellow();	
