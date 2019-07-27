@@ -28,6 +28,7 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   /// goalState is the goal the controller is trying to reach
   // goalPos_ << 2*(AGENT_NUMBER-1), 0.0, 1.5; //Initial Position // needs check so that my quads don't freak out
 
+  mavState=0;
   quadMode.data=1;
   targetVel_ << 0.0, 0.0, 0.0;
   mavYaw_ = M_PI/2.0;
@@ -225,8 +226,9 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
    nh_.param<bool>("/avoidAgents", avoidAgents, true);
 
    source_sub = nh_.subscribe("/agent_source_data",1,&geometricCtrl::sourceCallback,this,ros::TransportHints().tcpNoDelay());
+   agentState_sub = nh_.subscribe("/agentState",1,&geometricCtrl::agentStateCallback,this,ros::TransportHints().tcpNoDelay());
 
-  rcSub_ = nh_.subscribe(agentName+"/mavros/rc/in",1,&geometricCtrl::rc_command_callback,this,ros::TransportHints().tcpNoDelay());
+   rcSub_ = nh_.subscribe(agentName+"/mavros/rc/in",1,&geometricCtrl::rc_command_callback,this,ros::TransportHints().tcpNoDelay());
   referenceSub_=nh_.subscribe(agentName+"/reference/setpoint",1, &geometricCtrl::targetCallback,this,ros::TransportHints().tcpNoDelay());
 
   accelReferenceSub_=nh_.subscribe(agentName+"/reference/accel",1, &geometricCtrl::targetAccelCallback,this,ros::TransportHints().tcpNoDelay());
@@ -687,6 +689,10 @@ double geometricCtrl::b_sigMoid(double x, double c, double a){
   return 1/(1+std::exp(-c*(x-a)));
 }
 
+void geometricCtrl::agentStateCallback(const std_msgs::UInt8& msg){
+  mavState=msg.data;
+  ROS_INFO_THROTTLE(1,"geo getting mavState");
+}
 
 void geometricCtrl::checkDataCallback(const ros::TimerEvent& event){
   if (obstaclesOn){
@@ -727,8 +733,10 @@ void geometricCtrl::wait4Home(void){
         nh_.getParam("/gps_ref_altitude", H_altitude)){
       g_geodetic_converter.initialiseReference(H_latitude, H_longitude, H_altitude);
     }
-    
-    nh_.param<std::string>("/runAlg", runAlg, "lawnMower");    
+
+    if (mavState<2){
+      nh_.param<std::string>("/runAlg", runAlg, "lawnMower");
+    }
     ros::Duration(0.1).sleep();
     ros::spinOnce();
 
@@ -1288,7 +1296,9 @@ void geometricCtrl::gzmavposeCallback(const gazebo_msgs::ModelStates& msg){
 
 
 void geometricCtrl::armingCallback(const ros::TimerEvent& event){
-  //nh_.getParam("/runAlg", runAlg);
+  if (mavState<2){
+    nh_.getParam("/runAlg", runAlg);
+  }
 
   if (!current_state_.armed){ // reset integral error
     errorSum_ << 0.0, 0.0, 0.0;

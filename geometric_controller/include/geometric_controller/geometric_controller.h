@@ -43,6 +43,7 @@
 #include <sensor_msgs/Imu.h>
 #include <std_msgs/Int16.h>
 #include <std_msgs/Float64MultiArray.h>
+#include <std_msgs/UInt8.h>
 
 #include <RVO.h>
 #include <dlib/matrix.h>
@@ -70,6 +71,7 @@ class geometricCtrl
     ros::Subscriber accelReferenceSub_;
     ros::Subscriber flatreferenceSub_;
     ros::Subscriber agentSub_;
+    ros::Subscriber agentState_sub;
 
     ros::Subscriber keybrdSub_;
     ros::Subscriber mavstateSub_;
@@ -183,6 +185,7 @@ class geometricCtrl
 
     RVO::Vector2 errorsumOri_;
     RVO::Vector2 desVel;
+    int mavState;
 
     RVO::RVOSimulator* sim;
     visualization_msgs::Marker obstacleMsg;
@@ -198,9 +201,10 @@ class geometricCtrl
     void targetAccelCallback(const geometry_msgs::AccelStamped& msg);
     void flattargetCallback(const controller_msgs::FlatTarget& msg);
     void keyboardCallback(const geometry_msgs::Twist& msg);
+    void agentStateCallback(const std_msgs::UInt8& msg);
     void cmdloopCallback(const ros::TimerEvent& event);
     void armingCallback(const ros::TimerEvent& event);
-    void checkDataCallback(const ros::TimerEvent& event);
+    void checkDataCallback(const ros::TimerEvent& event);    
 
     void mavstateCallback(const mavros_msgs::State::ConstPtr& msg);
     void mavposeCallback(const geometry_msgs::PoseStamped& msg);
