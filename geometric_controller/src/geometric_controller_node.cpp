@@ -691,7 +691,6 @@ double geometricCtrl::b_sigMoid(double x, double c, double a){
 
 void geometricCtrl::agentStateCallback(const std_msgs::UInt8& msg){
   mavState=msg.data;
-  ROS_INFO_THROTTLE(1,"geo getting mavState");
 }
 
 void geometricCtrl::checkDataCallback(const ros::TimerEvent& event){
