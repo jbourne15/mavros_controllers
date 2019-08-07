@@ -43,6 +43,19 @@ geometricCtrl::geometricCtrl(const ros::NodeHandle& nh, const ros::NodeHandle& n
   start=std::chrono::system_clock::now();
   
   newSourceData=false;
+  nh_.param<bool>("geometric_controller/newSourceDataSim", newSourceDataSim, false);
+  std::cout<<"newSourceSim: "<<newSourceDataSim<<std::endl;
+  if (newSourceDataSim==true){
+    std::vector<double> tp;
+    nh_.getParam("mps/target", tp);
+
+    xs = tp[0];
+    ys = tp[1];
+    zs = tp[2];
+    std::cout<<"source: "<<xs<<", "<<ys<<", "<<zs<<std::endl;
+    newSourceData=true;
+  }
+  
   q_des<< -0.7071068,0,0,-0.7071068;
   holdPos_<<0,0,0;
   mavVel_<<0,0,0;

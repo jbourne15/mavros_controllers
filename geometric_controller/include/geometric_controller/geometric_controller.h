@@ -103,7 +103,7 @@ class geometricCtrl
     std::vector<std::chrono::time_point<std::chrono::system_clock>> startTimes;
     std::vector<std::chrono::duration<double>> e_time;
 
-    bool tuneRate, tuneAtt, avoiding, timeFlag, obstaclesOn, tunePosVel, newSourceData, outerBox;
+    bool tuneRate, tuneAtt, avoiding, timeFlag, obstaclesOn, tunePosVel, newSourceData, outerBox, newSourceDataSim;
     ros::Time finishedAvoid_time, avoid_time;
     mavros_msgs::RCIn  RCin;
     int num_rotors_;
